@@ -3,6 +3,7 @@ from typing import List, Dict, Callable, Any
 import random
 
 from bitemporal_space import BitemporalSpace, UpdateAction
+from generate_student_data import generate_student_data
 from plot_bitemporal_space import plot_bitemporal_space
 
 
@@ -11,38 +12,6 @@ def capture(space: BitemporalSpace, tt: datetime, work: Callable[[BitemporalSpac
     new_space = space.transform(tt, work)
     return new_space
 
-def generate_student_data(id: int) -> Dict[str, Any]:
-    return {
-        "age": random.randint(10, 20),
-        "name": f"Student_{id}"
-    }
-
-# Function to generate rectangles with random timestamps
-def generate_rectangles(start_time: datetime, end_time: datetime, num_points: int, generate_data: Callable[[int], Dict[str, Any]], id: int) -> BitemporalSpace:
-    space = BitemporalSpace()
-    
-    # Convert datetime to seconds for random generation
-    start_ts = start_time.timestamp()
-    end_ts = end_time.timestamp()
-    
-    # Generate random transaction and valid times
-    for i in range(num_points):
-        # Random valid time (vt)
-        vt_ts = random.uniform(start_ts, end_ts)
-        vt = datetime.fromtimestamp(vt_ts, tz=timezone.utc)
-        
-        # Random transaction time (tt), slightly later than vt
-        tt_offset = random.uniform(0, (end_ts - start_ts) / 10)  # Up to 10% of range
-        tt = datetime.fromtimestamp(vt_ts + tt_offset, tz=timezone.utc)
-        
-        # Flexible data (random age and name)
-        data = generate_data(id)
-        
-        # Insert the point
-        actions = space.insert_point(data, vt)
-        space = capture(space, tt, lambda s: actions)
-    
-    return space
 
 # Example usage with your specific times
 # vt1 = datetime.fromisoformat("2024-05-16T00:00:00+00:00")
@@ -71,11 +40,39 @@ def generate_rectangles(start_time: datetime, end_time: datetime, num_points: in
 
 
 
-def generate_timeslices(start_time: datetime, end_time: datetime, num_ids: int, num_points_per_id: int) -> BitemporalSpace:
+def generate_rectangles(start_time: datetime, end_time: datetime, num_ids: int, num_points_per_id: int, generate_data: Callable[[int], Dict[str, Any]],) -> BitemporalSpace:
+
+    # Function to generate rectangles with random timestamps
+    def generate_rectangles_for_id(id: int) -> BitemporalSpace:
+        space = BitemporalSpace()
+        
+        # Convert datetime to seconds for random generation
+        start_ts = start_time.timestamp()
+        end_ts = end_time.timestamp()
+        
+        # Generate random transaction and valid times
+        for i in range(num_points_per_id):
+            # Random valid time (vt)
+            vt_ts = random.uniform(start_ts, end_ts)
+            vt = datetime.fromtimestamp(vt_ts, tz=timezone.utc)
+            
+            # Random transaction time (tt), slightly later than vt
+            tt_offset = random.uniform(0, (end_ts - start_ts) / 10)  # Up to 10% of range
+            tt = datetime.fromtimestamp(vt_ts + tt_offset, tz=timezone.utc)
+            
+            # Flexible data (random age and name)
+            data = generate_data(id)
+            
+            # Insert the point
+            actions = space.insert_point(data, vt)
+            space = capture(space, tt, lambda s: actions)
+        
+        return space
+
     # Generate random rectangles
     timeslices = []
     for i in range(1, num_ids + 1):
-        random_space = generate_rectangles(start_time, end_time, num_points_per_id, generate_student_data, i)
+        random_space = generate_rectangles_for_id(i)
         timeslices.extend(random_space.rects)
 
     return timeslices
@@ -89,7 +86,7 @@ end_time = datetime.fromisoformat("2024-06-30T00:00:00+00:00")
 num_ids = 10
 num_points_per_id = 10
 
-print(generate_timeslices(start_time, end_time, num_ids, num_points_per_id))  # Visualize the random rectangles
+print(generate_rectangles(start_time, end_time, num_ids, num_points_per_id, generate_student_data))  # Visualize the random rectangles
 
 
 

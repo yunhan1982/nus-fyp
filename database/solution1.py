@@ -1,9 +1,29 @@
 import pymongo
 import hashlib
-from datetime import datetime
+from datetime import datetime, timezone
 from bson.binary import Binary, UUID_SUBTYPE
 from uuid import UUID
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
+
+from generate_rectangles import generate_rectangles
+from generate_student_data import generate_student_data
+
+# Constants
+INFINITY = datetime(9999, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
+
+# Rectangle class (from generate_rectangles output)
+class Rectangle:
+    def __init__(self, data: Dict[str, Any], tt_from: datetime, tt_to: datetime, vt_from: datetime, vt_to: datetime, index: int):
+        self.data = data
+        self.tt_from = tt_from
+        self.tt_to = tt_to
+        self.vt_from = vt_from
+        self.vt_to = vt_to
+        self.index = index
+
+    def __repr__(self):
+        return (f"Rectangle(data={self.data}, ttInterval=[{self.tt_from}, {self.tt_to}], "
+                f"vtInterval=[{self.vt_from}, {self.vt_to}], index={self.index})")
 
 # Connect to the local MongoDB client with standard UUID representation
 client = pymongo.MongoClient('mongodb://localhost:27017/', uuidRepresentation='standard')
@@ -40,59 +60,55 @@ def create_indexes_schema():
         ("hash", pymongo.ASCENDING),
         ("vt_to", pymongo.ASCENDING),
         ("tt_to", pymongo.ASCENDING)
-    ])  # B-tree index on (hash, vt_to, tt_to)
-    print("Indexes collection schema created with unique index on vref and B-tree index on (hash, vt_to, tt_to).")
+    ])
+    print("Indexes collection schema created with B-tree index on (hash, vt_to, tt_to).")
 
-# Insert a bitemporal record across all three collections
-def insert_bitemporal_record(
-    eref: UUID,
-    seq_no: int,
-    tt_from: datetime,
-    tt_to: datetime,
-    vt_from: datetime,
-    vt_to: datetime,
-    data: Dict[str, Any],
-    entity: str = "Student",
-    vref: Optional[UUID] = None
-) -> None:
-    """Insert a timeslice, payload, and index record into the database."""
-    # Generate vref if not provided
-    vref = vref or UUID(bytes=hashlib.md5(f"{eref}{seq_no}".encode()).digest())
-    md5_hash = compute_md5(data)
-
-    # Insert into Payload
-    payload = {
-        "vref": vref,
-        "data": data,
-        "hash": Binary(bytes.fromhex(md5_hash), UUID_SUBTYPE)
-    }
-    db.Payload.insert_one(payload)
-
-    # Insert into Timeslices
+# Insert a rectangle into Timeslices
+def insert_timeslice_from_rectangle(rect: Rectangle, vref: UUID, eref: UUID) -> None:
+    """Insert a timeslice from a Rectangle into Timeslices collection."""
     timeslice = {
         "eref": eref,
-        "seq_no": seq_no,
-        "tt_from": tt_from,
-        "tt_to": tt_to,
-        "vt_from": vt_from,
-        "vt_to": vt_to,
-        "vref": vref
+        "seq_no": rect.index,  # Use Rectangle.index as seq_no
+        "tt_from": rect.tt_from,
+        "tt_to": rect.tt_to,
+        "vt_from": rect.vt_from,
+        "vt_to": rect.vt_to,
+        "vref": vref 
     }
     db.Timeslices.insert_one(timeslice)
 
+# Insert a rectangle into Payload
+def insert_payload_from_rectangle(rect: Rectangle, vref: UUID) -> None:
+    """Insert a payload from a Rectangle into Payload collection."""
+    # Check for vref collision
+    if db.Payload.find_one({"vref": vref}):
+        # print(f"Collision detected for vref: {vref}. Skipping insertion.")
+        return  # Skip insertion if vref already exists
+
+    payload = {
+        "vref": vref,
+        "data": rect.data,
+        "hash": Binary(bytes.fromhex(compute_md5(rect.data)), UUID_SUBTYPE)
+    }
+
+    
+    db.Payload.insert_one(payload)
+
+# Insert a rectangle into Indexes
+def insert_index_from_rectangle(rect: Rectangle, vref: UUID, eref: UUID, entity: str = "Student") -> None:
     # Insert into Indexes for each key in data
-    for key, val in data.items():
+    for key, val in rect.data.items():
         # Compute MD5 hash for the specific data[key]
         item = {key: val}
         key_hash = hashlib.md5(str(item).encode('utf-8')).hexdigest()
-        
+            
         index = {
             "vref": vref,
             "eref": eref,
-            "tt_from": tt_from,
-            "tt_to": tt_to,
-            "vt_from": vt_from,
-            "vt_to": vt_to,
+            "tt_from": rect.tt_from,
+            "tt_to": rect.tt_to,
+            "vt_from": rect.vt_from,
+            "vt_to": rect.vt_to,
             "entity": entity,
             "data": item,
             "hash": Binary(bytes.fromhex(key_hash), UUID_SUBTYPE),  # Use hash of data[key]
@@ -100,84 +116,48 @@ def insert_bitemporal_record(
         }
         db.Indexes.insert_one(index)  # Insert for each key in data
 
+
 # Setup the schema
 create_timeslices_schema()
 create_payload_schema()
 create_indexes_schema()
 
-# Example: Insert records
-eref = UUID("123e4567-e89b-12d3-a456-426614174000")
-
-# Insert initial records
-insert_bitemporal_record(
-    eref=eref,
-    seq_no=1,
-    tt_from=datetime.fromisoformat("2023-01-01T00:00:00+00:00"),
-    tt_to=datetime.fromisoformat("9999-12-31T23:59:59+00:00"),
-    vt_from=datetime.fromisoformat("2023-01-01T00:00:00+00:00"),
-    vt_to=datetime.fromisoformat("2023-06-30T23:59:59+00:00"),
-    data={"name": "Joe", "age": 11}
+# Example data from your generate_rectangles output
+rectangles = generate_rectangles(
+    start_time=datetime(2024, 5, 16, 0, 0, 0, tzinfo=timezone.utc),
+    end_time=datetime(2024, 5, 20, 0, 0, 0, tzinfo=timezone.utc),
+    num_ids=100,
+    num_points_per_id=100,
+    generate_data=generate_student_data
 )
 
-insert_bitemporal_record(
-    eref=eref,
-    seq_no=2,
-    tt_from=datetime.fromisoformat("2023-01-01T00:00:00+00:00"),
-    tt_to=datetime.fromisoformat("9999-12-31T23:59:59+00:00"),
-    vt_from=datetime.fromisoformat("2023-01-01T00:00:00+00:00"),
-    vt_to=datetime.fromisoformat("2023-06-30T23:59:59+00:00"),
-    data={"name": "Joe", "age": 12}
-)
+# Insert rectangles into collections
 
-insert_bitemporal_record(
-    eref=eref,
-    seq_no=3,
-    tt_from=datetime.fromisoformat("2023-07-01T00:00:00+00:00"),
-    tt_to=datetime.fromisoformat("9999-12-31T23:59:59+00:00"),
-    vt_from=datetime.fromisoformat("2023-07-01T00:00:00+00:00"),
-    vt_to=datetime.fromisoformat("9999-12-31T23:59:59+00:00"),
-    data={"name": "Jozef", "age": 13}
-)
+def insert_rectangle_to_collections(rectangles: List[Rectangle]) -> None:
+    for rect in rectangles:
+        vref = UUID(bytes=hashlib.md5(str(rect.data).encode()).digest())
+        eref = UUID(bytes=hashlib.md5(str(rect.data.get("id", 0)).encode()).digest())
 
-insert_bitemporal_record(
-    eref=eref,
-    seq_no=4,
-    tt_from=datetime.fromisoformat("2023-07-01T00:00:00+00:00"),
-    tt_to=datetime.fromisoformat("9999-12-31T23:59:59+00:00"),
-    vt_from=datetime.fromisoformat("2023-07-01T00:00:00+00:00"),
-    vt_to=datetime.fromisoformat("9999-12-31T23:59:59+00:00"),
-    data={"name": "Joe", "age": 14}
-)
+
+        insert_payload_from_rectangle(rect, vref)
+        insert_timeslice_from_rectangle(rect, vref, eref)
+        insert_index_from_rectangle(rect, vref, eref)
+
+
+insert_rectangle_to_collections(rectangles)
 
 # Verify the setup
-print("\nTimeslices collection:")
-for doc in db.Timeslices.find():
-    print(doc)
+# print("\nTimeslices collection:")
+# for doc in db.Timeslices.find():
+#     print(doc)
 
-print("\nPayload collection:")
-for doc in db.Payload.find():
-    print(doc)
+# print("\nPayload collection:")
+# for doc in db.Payload.find():
+#     print(doc)
 
-print("\nIndexes collection:")
-for doc in db.Indexes.find():
-    print(doc)
-
-# Example query: Find records for name "Joe" at tt: 2023-03-01, vt: 2023-03-01
-search_hash = compute_md5({"name": "Joe"})
-query = {
-    "tt_from": {"$lte": datetime.fromisoformat("2023-03-01T00:00:00+00:00")},
-    "tt_to": {"$gt": datetime.fromisoformat("2023-03-01T00:00:00+00:00")},
-    "vt_from": {"$lte": datetime.fromisoformat("2023-03-01T00:00:00+00:00")},
-    "vt_to": {"$gt": datetime.fromisoformat("2023-03-01T00:00:00+00:00")},
-    "hash": Binary(bytes.fromhex(search_hash), UUID_SUBTYPE),
-    "data.name": "Joe"
-}
-
-print("\nQuery result for name 'Joe' at 2023-03-01 from Indexes:")
-for result in db.Indexes.find(query, {
-    "eref": 1, "tt_from": 1, "tt_to": 1, "vt_from": 1, "vt_to": 1, "data": 1, "_id": 0
-}):
-    print(result)
+# print("\nIndexes collection:")
+# for doc in db.Indexes.find():
+#     print(doc)
 
 # Close the connection
 client.close()
