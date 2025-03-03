@@ -1,18 +1,8 @@
 import hashlib
-from datetime import datetime
 from bson.binary import Binary, UUID_SUBTYPE
 from uuid import UUID
-from typing import Dict, Any, List
-
-# Rectangle class (assuming the same as in your original code)
-class Rectangle:
-    def __init__(self, data: Dict[str, Any], tt_from: datetime, tt_to: datetime, vt_from: datetime, vt_to: datetime, index: int):
-        self.data = data
-        self.tt_from = tt_from
-        self.tt_to = tt_to
-        self.vt_from = vt_from
-        self.vt_to = vt_to
-        self.index = index
+from typing import List
+from bitemporal_space import Rectangle
 
 # Main function to insert rectangles
 async def insert_rectangle_to_collections(rectangles: List[Rectangle], db, entity: str = "Student", indices: List[str] = ["name", "age"]) -> None:

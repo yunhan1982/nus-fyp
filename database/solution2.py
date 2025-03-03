@@ -1,19 +1,8 @@
 import hashlib
-from datetime import datetime, timezone
 from uuid import UUID
 from typing import Dict, Any, List
-import motor.motor_asyncio
 from bson.binary import Binary, UUID_SUBTYPE
-
-# Rectangle class (assuming the same as in your original code)
-class Rectangle:
-    def __init__(self, data: Dict[str, Any], tt_from: datetime, tt_to: datetime, vt_from: datetime, vt_to: datetime, index: int):
-        self.data = data
-        self.tt_from = tt_from
-        self.tt_to = tt_to
-        self.vt_from = vt_from
-        self.vt_to = vt_to
-        self.index = index
+from bitemporal_space import Rectangle
 
 # Function to compute MD5 hash of data (for Payload)
 def compute_md5(data_dict: Dict[str, Any]) -> str:
