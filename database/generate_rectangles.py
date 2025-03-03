@@ -1,7 +1,6 @@
 from datetime import datetime, timezone
 from typing import List, Dict, Callable, Any, Tuple
 import random
-import math
 
 from bitemporal_space import BitemporalSpace, UpdateAction
 from generate_student_data import generate_student_data
@@ -41,21 +40,17 @@ def generate_rectangles(start_time: datetime, end_time: datetime, num_ids: int, 
             transaction_timestamps.add(tt)
             timestamps.append((tt, vt))
 
-        timestamps.sort(key=lambda x: (x[0], x[1]))  # Sort by transaction time
-        
+        timestamps.sort(key=lambda x: x[0])  # Sort by transaction time
 
         for i in range(len(timestamps)):
             tt, vt = timestamps[i]
             # Flexible data (random age and name)
-            data = generate_data(i)
+            data = generate_data(id)
             
             # Insert the point
             space = capture(space, tt, lambda s: s.insert_point(data, vt))
         
         return space
-
-   
-
 
     # Generate random rectangles
     timeslices = []
@@ -77,7 +72,7 @@ num_points_per_id = 10
 # print(generate_rectangles(start_time, end_time, num_ids, num_points_per_id, generate_student_data))  # Visualize the random rectangles
 space = BitemporalSpace()
 space.rects = generate_rectangles(start_time, end_time, num_ids, num_points_per_id, generate_student_data)
-plot_bitemporal_space(space)  # Visualize the random rectangles
+# plot_bitemporal_space(space)  # Visualize the random rectangles
 
 
 
