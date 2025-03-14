@@ -21,7 +21,6 @@ def plot_bitemporal_space(space: BitemporalSpace, title: str = "Bitemporal Space
     colors = plt.cm.Set3(np.linspace(0, 1, len(space.rects)))
 
     for i, rect in enumerate(space.rects):
-        print(rect)
         # Convert times to matplotlib dates
         tt_start = mdates.date2num(rect.tt_from)
         tt_end = mdates.date2num(rect.tt_to if rect.tt_to != INFINITY else tt_max)
