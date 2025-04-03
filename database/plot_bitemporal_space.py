@@ -13,6 +13,7 @@ def plot_bitemporal_space(space: BitemporalSpace, title: str = "Bitemporal Space
     one_day = timedelta(days=1)
     
     tt_min = min(r.tt_from for r in space.rects) - one_day
+    print(space.rects)
     tt_max = one_day + max(r.tt_to for r in space.rects if r.tt_to != INFINITY) or space.latest_tx_time
     vt_min = min(r.vt_from for r in space.rects) - one_day
     vt_max = one_day + max(r.vt_to for r in space.rects if r.vt_to != INFINITY) or max(r.vt_from for r in space.rects)

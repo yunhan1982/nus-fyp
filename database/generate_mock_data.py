@@ -8,8 +8,8 @@ from solution2 import Solution2
 
 # Generate rectangles
 def generate_rectangles_data(
-    batch_size=1_000, 
-    total_ids=4 * 1_000_000,
+    batch_size=100, 
+    total_ids=4 * 1_000,
     start_time=datetime(2018, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
     end_time=datetime(2025, 3, 1, 0, 0, 0, tzinfo=timezone.utc),
     num_points_per_id=500
@@ -58,7 +58,6 @@ async def main():
     try: 
         start_time = datetime.now()
         print(f"Starting at: {start_time}")
-
 
         client = motor.motor_asyncio.AsyncIOMotorClient('mongodb://localhost:27017/', uuidRepresentation='standard')
     

@@ -1,15 +1,16 @@
 import hashlib
-from datetime import datetime, timezone
 from bson.binary import Binary, UUID_SUBTYPE
 from uuid import UUID
 from typing import List
+import motor.motor_asyncio
 from bitemporal_space import Rectangle
 
 
+
 class Solution1: 
-    def __init__(self, db) -> None:
-        self.id = 1
-        self.db = db
+    def __init__(self) -> None:
+        self.db = motor.motor_asyncio.AsyncIOMotorClient('mongodb://localhost:27017/', uuidRepresentation='standard')["Solution1"]
+
     
     async def initialize_collections(self):
         # Drop and create collections with indexes
@@ -102,18 +103,21 @@ class Solution1:
         if payloads_batch:
             try:
                 await self.db.Payloads.insert_many(payloads_batch, ordered=False)
+                print(f"Solution1: Inserted {len(payloads_batch)} documents into Payload collection")
             except Exception as e:
                 print(f"Some payload inserts failed: {e}")
         
         if timeslices_batch:
             try:
                 await self.db.Timeslices.insert_many(timeslices_batch, ordered=False)
+                print(f"Solution1: Inserted {len(timeslices_batch)} documents into Timeslices collection")
             except Exception as e:
                 print(f"Some timeslice inserts failed: {e}")
         
         if index_batch:
             try:
                 await self.db.Index.insert_many(index_batch, ordered=False)
+                print(f"Solution1: Inserted {len(index_batch)} documents into Index collection")
             except Exception as e:
                 print(f"Some index inserts failed: {e}")
 
@@ -137,7 +141,7 @@ class Solution1:
         # Step 1: Create hash for name query and search by hash, vt, tt
         name_item = {"name": name}
         name_hash = Binary(bytes.fromhex(hashlib.md5(str(name_item).encode('utf-8')).hexdigest()), UUID_SUBTYPE)
-        
+
         name_query = {
             "hash": name_hash,
             "entity": entity,

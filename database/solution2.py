@@ -2,13 +2,13 @@ import hashlib
 from uuid import UUID
 from typing import Dict, Any, List
 from bson.binary import Binary, UUID_SUBTYPE
+import motor.motor_asyncio
 from bitemporal_space import Rectangle
 
 
 class Solution2:
-    def __init__(self, db) -> None:
-        self.id = 2
-        self.db = db
+    def __init__(self) -> None:
+        self.db = motor.motor_asyncio.AsyncIOMotorClient('mongodb://localhost:27017/', uuidRepresentation='standard')["Solution2"]
 
     async def initialize_collections(self):
         # Drop and create collections with indexes
@@ -18,8 +18,8 @@ class Solution2:
         # Create indexes
         await self.db.Index.create_index([
             ("name", 1),
-            ("tt_to", 1),
-            ("vt_to", 1)
+            ("tt_from", 1),
+            ("vt_from", 1)
         ])
         await self.db.Index.create_index([
             ("age", 1),
