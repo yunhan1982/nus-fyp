@@ -1,15 +1,16 @@
 import asyncio
-import motor.motor_asyncio
 from datetime import datetime, timezone
-from generate_rectangles import generate_rectangles
-from generate_student_data import generate_student_data
-from solution1 import Solution1
-from solution2 import Solution2
+from utils.generate_rectangles import generate_rectangles
+from utils.generate_student_data import generate_student_data
+from core.solution1 import Solution1
+from core.solution2 import Solution2
+from core.solution3 import Solution3
+# from core.xtdb_solution import XTDBSolution
 
 # Generate rectangles
 def generate_rectangles_data(
     batch_size=100, 
-    total_ids=4 * 1_000,
+    total_ids=2_000,
     start_time=datetime(2018, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
     end_time=datetime(2025, 3, 1, 0, 0, 0, tzinfo=timezone.utc),
     num_points_per_id=500
@@ -48,42 +49,45 @@ def generate_rectangles_data(
 
 # Run solution1 async
 async def run_solution(solution, rectangles):
-    print(f"Starting Solution {solution.id}...")
+    print(f"Starting {solution.name}...")
     await solution.insert_rectangle_to_collections(rectangles)
-    print(f"Solution {solution.id} completed")
+    print(f"{solution.name} completed")
 
 
 # Main execution
 async def main():
-    try: 
-        start_time = datetime.now()
-        print(f"Starting at: {start_time}")
+    start_time = datetime.now()
+    print(f"Starting at: {start_time}")
 
-        client = motor.motor_asyncio.AsyncIOMotorClient('mongodb://localhost:27017/', uuidRepresentation='standard')
+
+    solutions = [
+        # Solution1(), 
+        # Solution2(), 
+        Solution3()
+    ]
+    await asyncio.gather(
+        *[solution.initialize_collections() for solution in solutions]
+    )
+
     
-        solution1 = Solution1(client["Solution1"])
-        solution2 = Solution2(client["Solution2"])
+    # xtdbSolution = XTDBSolution()
 
-
-        # Process each batch of rectangles
-        batch_generator = generate_rectangles_data()
-        batch_count = 0
+    # Process each batch of rectangles
+    batch_generator = generate_rectangles_data()
+    batch_count = 0
+    
+    for rectangles_batch in batch_generator:
+        batch_count += 1
+        print(f"Processing batch {batch_count} with {len(rectangles_batch)} rectangles")
         
-        for rectangles_batch in batch_generator:
-            batch_count += 1
-            print(f"Processing batch {batch_count} with {len(rectangles_batch)} rectangles")
-            
-            # Run all solutions concurrently for this batch
-            await asyncio.gather(
-                run_solution(solution1, rectangles_batch),
-                run_solution(solution2, rectangles_batch)
-            )
-        
-        end_time = datetime.now()
-        print(f"All solutions executed successfully")
-        print(f"Total execution time: {end_time - start_time}")
-    finally:
-        client.close()
+        # Run all solutions concurrently for this batch
+        await asyncio.gather(
+            *[run_solution(solution, rectangles_batch) for solution in solutions]
+        )
+    
+    end_time = datetime.now()
+    print(f"All solutions executed successfully")
+    print(f"Total execution time: {end_time - start_time}")
 
 if __name__ == "__main__":
     asyncio.run(main())

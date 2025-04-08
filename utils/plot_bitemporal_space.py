@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from datetime import timedelta
 
-from bitemporal_space import BitemporalSpace, INFINITY
+from core.bitemporal_space import BitemporalSpace, INFINITY
 
 
 def plot_bitemporal_space(space: BitemporalSpace, title: str = "Bitemporal Space"):

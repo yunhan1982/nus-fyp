@@ -56,8 +56,7 @@ class BitemporalSpace:
         self.time_slice_count = 0
         
     def on_tx_time(self, tt: datetime) -> List[Rectangle]:
-        active = [r for r in self.rects if r.tt_from <= tt < r.tt_to]
-        # active = [r for r in self.rects if (r.tt_to == INFINITY and tt == INFINITY) and (r.tt_from <= tt < r.tt_to)]
+        active = [r for r in self.rects if (r.tt_to == INFINITY and tt == INFINITY) and (r.tt_from <= tt <= r.tt_to)]
         return sorted(active, key=lambda r: r.vt_from)
     
     def insert_point(self, item: Optional[Dict[str, Any]], vtf: datetime, filter_func: Callable[[Rectangle], bool] = lambda _: False) -> List[UpdateAction]:

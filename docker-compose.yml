@@ -1,0 +1,28 @@
+version: "3.8"
+
+services:
+  # xtdb:
+  #   image: ghcr.io/xtdb/xtdb-in-memory:1.23.2
+  #   container_name: xtdb-in-memory
+  #   ports:
+  #     - "3000:3000"
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:3000/status"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #     start_period: 10s
+
+  duckdb:
+    image: qldrsc/duckdb:latest
+    volumes:
+      - ./data:/data
+    ports:
+      - "4000:4000"
+    command: ["--http", "--port", "4000", "--data", "/data"]
+    restart: unless-stopped
+
+volumes:
+  data:
+    driver: local
