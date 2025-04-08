@@ -57,7 +57,7 @@ class Solution2:
         
         # Process all rectangles
         for rect in rectangles:
-            vref = UUID(bytes=hashlib.md5(str(rect.data).encode()).digest())
+            vref = UUID(bytes=hashlib.md5(str(rect.data["payload"]).encode()).digest())
             eref = UUID(bytes=hashlib.md5(str(rect.data.get("id", 0)).encode()).digest())
             
             # Create base index entry
@@ -73,7 +73,7 @@ class Solution2:
             
             # Dynamically add all indexed fields
             for field in self.indices:
-                index_entry[field] = rect.data.get(field)
+                index_entry[field] = rect.data["payload"].get(field)
                 
             index_batch.append(index_entry)
             
@@ -81,8 +81,8 @@ class Solution2:
             if vref not in payload_vrefs:
                 payload_entry = {
                     "vref": vref,
-                    "data": rect.data,
-                    "hash": Binary(bytes.fromhex(Solution2.compute_md5(rect.data)), UUID_SUBTYPE)
+                    "data": rect.data["payload"],
+                    "hash": Binary(bytes.fromhex(Solution2.compute_md5(rect.data["payload"])), UUID_SUBTYPE)
                 }
                 payload_batch.append(payload_entry)
                 payload_vrefs.add(vref)

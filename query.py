@@ -1,39 +1,35 @@
 import asyncio
 from datetime import datetime, timezone
-import importlib
-from typing import List, Type
 from utils.timing import timer
+from core.solution1 import Solution1
+from core.solution2 import Solution2
+from core.solution3 import Solution3
 
-async def run_query(solution_class: Type, name: str, age: int, tt: datetime, vt: datetime):
-    async with timer(f"{solution_class.__name__} Query") as t:
-        solution = solution_class()
-        t.stage("Initialization")
-
+async def run_query(solution, name: str, age: int, tt: datetime, vt: datetime):
+    async with timer(f"{solution.name} Query") as t:
         records = await solution.query_by_name_and_age(name, age, tt, vt)
-        print(records)
         t.stage("Query Execution")
 
-        print(f"{solution_class.__name__}: Found {len(records) if records else 0} records")
+        print(f"{solution.name}: Found {len(records) if records else 0} record: ")
+        print(records)
         t.stage("Results Processing")
         return records
 
 async def main():
     # Dynamic solution loading
-    solutions = []
-    for i in [1, 2]:  # Adjust range based on number of solutions
-        module = importlib.import_module(f"core.solution{i}")
-        solution_class = getattr(module, f"Solution{i}")
-        solutions.append(solution_class)
+    solutions = [
+        Solution1(), 
+        Solution2(), 
+        Solution3()
+    ]
 
     # Query parameters
-    tt = datetime(2018, 12, 13, 0, 0, 0, tzinfo=timezone.utc)
-    vt = datetime(2018, 4, 1, 0, 0, 0, tzinfo=timezone.utc)
-    name, age = "Student_1", 17
+    tt = datetime(2018, 9, 1, 0, 0, 0, tzinfo=timezone.utc)
+    vt = datetime(2018, 2, 5, 0, 0, 0, tzinfo=timezone.utc)
+    name, age = "Student_2492", 11
 
-    # Run all solutions concurrently
     async with timer("Total Execution") as t:
-        tasks = [run_query(solution, name, age, tt, vt) for solution in solutions]
-        await asyncio.gather(*tasks)
-
+        for solution in solutions:
+            await run_query(solution, name, age, tt, vt) 
 if __name__ == "__main__":
     asyncio.run(main())

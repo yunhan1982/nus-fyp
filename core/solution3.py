@@ -12,13 +12,17 @@ class Solution3:
         self.name = "Solution3"
         self.connection = None
         self.indices = ["name", "age", "attr1", "attr2", "attr3", "attr4"]
+        self.memory_limit = '4GB'
     
     async def connect(self):
         """Connect to DuckDB instance"""
-        self.connection = duckdb.connect('data/solution3.db')
+        self.connection = duckdb.connect('duckdb_data/solution3.db')
         # Enable JSON extension for handling JSON data
         self.connection.execute("INSTALL httpfs; LOAD httpfs;")
         self.connection.execute("INSTALL json; LOAD json;")
+        self.connection.execute(f"PRAGMA memory_limit='{self.memory_limit}';")
+        print(f"{self.name}: Set memory limit to {self.memory_limit}")
+
         print(f"{self.name}: Connected to DuckDB database")
     
     async def close(self):

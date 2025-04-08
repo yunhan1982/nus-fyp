@@ -11,6 +11,7 @@ class Solution1:
         self.name = "Solution1"
         self.client = motor.motor_asyncio.AsyncIOMotorClient('mongodb://localhost:27017/', uuidRepresentation='standard')
         self.db = self.client[self.name]
+        self.indices = ["name", "age", "attr1", "attr2", "attr3", "attr4"]
 
     # async def cleanup(self):
     #     """Destructor to ensure client is closed"""
@@ -44,7 +45,7 @@ class Solution1:
 
 
     # Main function to insert rectangles
-    async def insert_rectangle_to_collections(self, rectangles: List[Rectangle], entity: str = "Student", indices: List[str] = ["name", "age", "attr1", "attr2", "attr3", "attr4"]) -> None:
+    async def insert_rectangle_to_collections(self, rectangles: List[Rectangle], entity: str = "Student") -> None:
         # Prepare batch document collections
         payloads_batch = []
         timeslices_batch = []
@@ -55,15 +56,15 @@ class Solution1:
         timeslice_keys = set()    
         # Process all rectangles
         for rect in rectangles:
-            vref = UUID(bytes=hashlib.md5(str(rect.data).encode()).digest())
+            vref = UUID(bytes=hashlib.md5(str(rect.data["payload"]).encode()).digest())
             eref = rect.data.get("id", 0)
             seq_no = str(rect.index)
             # Payload document
             if vref not in payload_vrefs:
                 payload = {
                     "vref": vref,
-                    "name": rect.data.get("name"),
-                    "age": rect.data.get("age")
+                    "name": rect.data["payload"].get("name"),
+                    "age": rect.data["payload"].get("age")
                 }
                 payloads_batch.append(payload)
                 payload_vrefs.add(vref)
@@ -85,11 +86,9 @@ class Solution1:
                 timeslice_keys.add(timeslice_key)
             
 
-            key_hash = hashlib.md5(str(rect.data).encode('utf-8')).hexdigest()
-
-            for key in indices:
+            for key in self.indices:
                 # Compute MD5 hash for the specific data[key]
-                item = {key: rect.data[key]}
+                item = {key: rect.data["payload"][key]}
                 key_hash = hashlib.md5(str(item).encode('utf-8')).hexdigest()
                     
                 index_entry = {
@@ -168,11 +167,7 @@ class Solution1:
         
         # Step 3: Get all entity references (erefs) from name matches
         erefs = {entry["eref"] for entry in name_index_entries}
-        vrefs = [entry["vref"] for entry in name_index_entries]
 
-        print(await self.db.Payloads.find({"vref": {"$in": vrefs}}).to_list(None))
-
-        print(name_index_entries)
         # Step 4: Create hash for age query and search by hash, vt, tt, and eref
         age_item = {"age": age}
         age_hash = Binary(bytes.fromhex(hashlib.md5(str(age_item).encode('utf-8')).hexdigest()), UUID_SUBTYPE)
@@ -195,11 +190,6 @@ class Solution1:
         
         if not age_index_entries:
             return []
-        
-        print(age_index_entries)
-
-        # Get intersection of entities that match both name and age
-        matching_erefs = {entry["eref"] for entry in age_index_entries}
         
         # Step 6: Get all vrefs from matching entities
         matching_vrefs = set()

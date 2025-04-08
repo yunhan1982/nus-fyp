@@ -61,16 +61,13 @@ async def main():
 
 
     solutions = [
-        # Solution1(), 
-        # Solution2(), 
+        Solution1(), 
+        Solution2(), 
         Solution3()
     ]
     await asyncio.gather(
         *[solution.initialize_collections() for solution in solutions]
     )
-
-    
-    # xtdbSolution = XTDBSolution()
 
     # Process each batch of rectangles
     batch_generator = generate_rectangles_data()
