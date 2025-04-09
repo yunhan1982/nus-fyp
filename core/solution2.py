@@ -58,7 +58,7 @@ class Solution2:
         # Process all rectangles
         for rect in rectangles:
             vref = UUID(bytes=hashlib.md5(str(rect.data["payload"]).encode()).digest())
-            eref = UUID(bytes=hashlib.md5(str(rect.data.get("id", 0)).encode()).digest())
+            eref = rect.data.get("id", 0)
             
             # Create base index entry
             index_entry = {
@@ -82,7 +82,6 @@ class Solution2:
                 payload_entry = {
                     "vref": vref,
                     "data": rect.data["payload"],
-                    "hash": Binary(bytes.fromhex(Solution2.compute_md5(rect.data["payload"])), UUID_SUBTYPE)
                 }
                 payload_batch.append(payload_entry)
                 payload_vrefs.add(vref)
@@ -130,6 +129,6 @@ class Solution2:
         # Return the data from matching payloads
         results = []
         async for doc in cursor:
-            results.append(doc["data"])
+            results.append(doc)
             
         return results

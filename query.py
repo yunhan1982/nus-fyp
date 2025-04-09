@@ -24,12 +24,11 @@ async def main():
     ]
 
     # Query parameters
-    tt = datetime(2018, 9, 1, 0, 0, 0, tzinfo=timezone.utc)
-    vt = datetime(2018, 2, 5, 0, 0, 0, tzinfo=timezone.utc)
-    name, age = "Student_2492", 11
+    tt = datetime(2018, 7, 20, 0, 0, 0, tzinfo=timezone.utc)
+    vt = datetime(2018, 6, 8, 0, 0, 0, tzinfo=timezone.utc)
+    name, age = "Student_4715", 17
 
-    async with timer("Total Execution") as t:
-        for solution in solutions:
-            await run_query(solution, name, age, tt, vt) 
+    for solution in solutions:
+        await run_query(solution, name, age, tt, vt) 
 if __name__ == "__main__":
     asyncio.run(main())
