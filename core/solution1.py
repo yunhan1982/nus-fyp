@@ -4,6 +4,7 @@ from uuid import UUID
 from typing import List
 import motor.motor_asyncio
 from .bitemporal_space import Rectangle
+from .utils.timing import Timer
 
 
 class Solution1: 
@@ -129,77 +130,81 @@ class Solution1:
                 print(f"Some index inserts failed: {e}")
 
     async def query_by_name_and_age(self, name, age, tt, vt, entity="Student"):
-        """
-        Query records by both name and age at specific transaction and valid times.
+        """Query records by both name and age with timing for each step."""
+        timer = Timer("MongoDB Query Performance")
+        timer.start()
         
-        Args:
-            db: Database connection
-            name: Name to search for
-            age: Age to search for
-            tt: Transaction time to check
-            vt: Valid time to check
-            entity: Entity type (default: "Student")
-        
-        Returns:
-            List of matching records
-        """
-        # Step 1: Create hash for name query and search by hash, vt, tt
-        name_item = {"name": name}
-        name_hash = Binary(bytes.fromhex(hashlib.md5(str(name_item).encode('utf-8')).hexdigest()), UUID_SUBTYPE)
+        try:
+            # Step 1: Create hash for name query
+            name_item = {"name": name}
+            name_hash = Binary(bytes.fromhex(hashlib.md5(str(name_item).encode('utf-8')).hexdigest()), UUID_SUBTYPE)
+            timer.stage("Hash Creation - Name")
 
-        name_query = {
-            "hash": name_hash,
-            "entity": entity,
-            "tt_from": {"$lte": tt},
-            "tt_to": {"$gt": tt},
-            "vt_from": {"$lte": vt},
-            "vt_to": {"$gt": vt},
-            "key": "name"
-        }
-        
-        # Step 2: Get name index entries and filter for correct name
-        name_index_entries = await self.db.Index.find(name_query).to_list(None)
-        name_index_entries = [entry for entry in name_index_entries 
-                            if entry.get("data", {}).get("name") == name]
-        
-        if not name_index_entries:
-            return []
-        
-        # Step 3: Get all entity references (erefs) from name matches
-        erefs = {entry["eref"] for entry in name_index_entries}
+            name_query = {
+                "hash": name_hash,
+                "entity": entity,
+                "tt_from": {"$lte": tt},
+                "tt_to": {"$gt": tt},
+                "vt_from": {"$lte": vt},
+                "vt_to": {"$gt": vt},
+                "key": "name"
+            }
+            
+            # Step 2: Execute name query
+            name_index_entries = await self.db.Index.find(name_query).to_list(None)
+            t.stage("Name Query Execution")
+            
+            name_index_entries = [entry for entry in name_index_entries 
+                                if entry.get("data", {}).get("name") == name]
+            t.stage("Name Filter")
+            
+            if not name_index_entries:
+                return []
+            
+            # Step 3: Get erefs
+            erefs = {entry["eref"] for entry in name_index_entries}
+            t.stage("ERef Extraction")
 
-        # Step 4: Create hash for age query and search by hash, vt, tt, and eref
-        age_item = {"age": age}
-        age_hash = Binary(bytes.fromhex(hashlib.md5(str(age_item).encode('utf-8')).hexdigest()), UUID_SUBTYPE)
-        
-        age_query = {
-            "hash": age_hash,
-            "entity": entity,
-            "eref": {"$in": list(erefs)},
-            "tt_from": {"$lte": tt},
-            "tt_to": {"$gt": tt},
-            "vt_from": {"$lte": vt},
-            "vt_to": {"$gt": vt},
-            "key": "age"
-        }
-        
-        # Step 5: Get age index entries and filter for correct age
-        age_index_entries = await self.db.Index.find(age_query).to_list(None)
-        age_index_entries = [entry for entry in age_index_entries 
-                            if entry.get("data", {}).get("age") == age]
-        
-        if not age_index_entries:
+            # Step 4: Create hash for age query
+            age_item = {"age": age}
+            age_hash = Binary(bytes.fromhex(hashlib.md5(str(age_item).encode('utf-8')).hexdigest()), UUID_SUBTYPE)
+            t.stage("Hash Creation - Age")
+            
+            age_query = {
+                "hash": age_hash,
+                "entity": entity,
+                "eref": {"$in": list(erefs)},
+                "tt_from": {"$lte": tt},
+                "tt_to": {"$gt": tt},
+                "vt_from": {"$lte": vt},
+                "vt_to": {"$gt": vt},
+                "key": "age"
+            }
+            
+            # Step 5: Execute age query
+            age_index_entries = await self.db.Index.find(age_query).to_list(None)
+            t.stage("Age Query Execution")
+            
+            age_index_entries = [entry for entry in age_index_entries 
+                                if entry.get("data", {}).get("age") == age]
+            t.stage("Age Filter")
+            
+            if not age_index_entries:
+                return []
+            
+            # Step 6: Get matching vrefs
+            matching_vrefs = {entry["vref"] for entry in age_index_entries}
+            t.stage("vref Extraction")
+            
+            # Step 7: Final payload query
+            if matching_vrefs:
+                payloads = await self.db.Payloads.find(
+                    {"vref": {"$in": list(matching_vrefs)}}
+                ).to_list(None)
+                timer.stage("Payload Query")
+                return payloads
+            
             return []
-        
-        # Step 6: Get all vrefs from matching entities
-        matching_vrefs = set()
-        for entry in age_index_entries:
-            matching_vrefs.add(entry["vref"])
-        
-        # Retrieve the actual payload documents
-        if matching_vrefs:
-            payloads = await self.db.Payloads.find({"vref": {"$in": list(matching_vrefs)}}).to_list(None)
-            return payloads
-        
-        return []
+        finally:
+            timer.stop()
 

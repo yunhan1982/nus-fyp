@@ -4,7 +4,7 @@ import random
 import uuid
 
 from core.bitemporal_space import BitemporalSpace, UpdateAction
-from utils.plot_bitemporal_space import plot_bitemporal_space
+from .plot_bitemporal_space import plot_bitemporal_space
 
 
 # Helper function to capture transformations
@@ -23,24 +23,42 @@ def generate_rectangles(start_time: datetime, end_time: datetime, num_ids: int, 
         start_ts = start_time.timestamp()
         end_ts = end_time.timestamp()
         
-        timestamps: List[Tuple[datetime, datetime]] = []
         # Generate random transaction and valid times
         transaction_timestamps = set()
+        valid_timestamps = set()
+        timestamps: List[Tuple[datetime, datetime]] = []
+
+        # Divide the time range into segments
+        total_time_range = end_ts - start_ts
+        vt_segment_size = total_time_range / (num_points_per_id * 2)  # Smaller segments for more uniform distribution
+        tt_segment_size = total_time_range / (num_points_per_id * 2)
 
         for i in range(num_points_per_id):
-            # Random valid time (vt)
-            vt_ts = random.uniform(start_ts, end_ts)
-            vt = datetime.fromtimestamp(vt_ts, tz=timezone.utc)            
-            # Random transaction time (tt), slightly later than vt
-            tt_ts = random.uniform(vt_ts, end_ts)
+            # Calculate segment boundaries for valid time
+            vt_segment_start = start_ts + (i * vt_segment_size)
+            vt_segment_end = vt_segment_start + vt_segment_size
+            
+            # Generate valid time within its segment
+            vt_ts = random.uniform(vt_segment_start, vt_segment_end)
+            vt = datetime.fromtimestamp(vt_ts, tz=timezone.utc)
+            
+            # Calculate segment boundaries for transaction time
+            # Ensure tt is always after vt
+            tt_segment_start = max(vt_ts, start_ts + (i * tt_segment_size))
+            tt_segment_end = start_ts + ((i + 1) * tt_segment_size)
+            
+            # Generate transaction time within its segment
+            tt_ts = random.uniform(tt_segment_start, tt_segment_end)
             tt = datetime.fromtimestamp(tt_ts, tz=timezone.utc)
-            if tt in transaction_timestamps:
+            
+            if tt in transaction_timestamps or vt in valid_timestamps:
                 continue
+                
             transaction_timestamps.add(tt)
+            valid_timestamps.add(vt)
             timestamps.append((tt, vt))
 
-        timestamps.sort(key=lambda x: x[0])  # Sort by transaction time
-        
+        # No need to sort as timestamps are already ordered
         data_id = uuid.uuid4()
 
         for i in range(len(timestamps)):
@@ -101,3 +119,6 @@ def generate_rectangles(start_time: datetime, end_time: datetime, num_ids: int, 
 
 # print("After specific inserts:")
 # plot_bitemporal_space(space)  # Visualize the specific rectangles
+
+
+

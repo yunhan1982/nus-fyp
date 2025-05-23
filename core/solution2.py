@@ -58,7 +58,7 @@ class Solution2:
         # Process all rectangles
         for rect in rectangles:
             vref = UUID(bytes=hashlib.md5(str(rect.data["payload"]).encode()).digest())
-            eref = rect.data.get("id", 0)
+            eref = rect.data.get("id", 0)   
             
             # Create base index entry
             index_entry = {

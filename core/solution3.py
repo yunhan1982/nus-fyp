@@ -76,13 +76,14 @@ class Solution3:
             FOREIGN KEY (vref) REFERENCES Index_data(vref)
         )
         """)
+   
+    async def initialize_indices(self):
         self.connection.execute("CREATE INDEX idx_tt_from ON Index_ts (tt_from)")
         self.connection.execute("CREATE INDEX idx_tt_to ON Index_ts (tt_to)")
         self.connection.execute("CREATE INDEX idx_vt_from ON Index_ts (vt_from)")
         self.connection.execute("CREATE INDEX idx_vt_to ON Index_ts (vt_to)")
-        
-        print(f"{self.name}: Tables created with appropriate indexes")
-    
+        print(f"{self.name}: Tables initialized with appropriate indexes")
+
     @staticmethod
     def compute_md5(data_dict: Dict[str, Any]) -> bytes:
         """Compute MD5 hash of a dictionary, ensuring JSON-like string format."""

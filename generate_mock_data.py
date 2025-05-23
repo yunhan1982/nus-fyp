@@ -1,10 +1,12 @@
 import asyncio
 from datetime import datetime, timezone
-from utils.generate_rectangles import generate_rectangles
-from utils.generate_student_data import generate_student_data
+from core.utils.generate_rectangles import generate_rectangles
+from core.utils.generate_student_data import generate_student_data
 from core.solution1 import Solution1
 from core.solution2 import Solution2
 from core.solution3 import Solution3
+from core.solution4 import Solution4
+
 # from core.xtdb_solution import XTDBSolution
 
 # Generate rectangles
@@ -61,9 +63,10 @@ async def main():
 
 
     solutions = [
-        # Solution1(), 
-        # Solution2(), 
-        Solution3()
+        Solution1(), 
+        Solution2(),
+        # Solution3()
+        Solution4()
     ]
     await asyncio.gather(
         *[solution.initialize_collections() for solution in solutions]
