@@ -6,17 +6,19 @@ from core.solution1 import Solution1
 from core.solution2 import Solution2
 from core.solution3 import Solution3
 from core.solution4 import Solution4
+from core.solution5 import Solution5
 
-# from core.xtdb_solution import XTDBSolution
+from core.xtdb_solution import XTDBSolution
 
 # Generate rectangles
 def generate_rectangles_data(
-    batch_size=100, 
-    total_ids=2_000,
+    batch_size=20, 
+    total_ids=200,
     start_time=datetime(2018, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
     end_time=datetime(2025, 3, 1, 0, 0, 0, tzinfo=timezone.utc),
     num_points_per_id=500
 ):
+
     """
     Generate rectangle data in batches of specified size.
     
@@ -65,8 +67,10 @@ async def main():
     solutions = [
         Solution1(), 
         Solution2(),
-        # Solution3()
-        Solution4()
+        Solution3(),
+        Solution4(),
+        Solution5(),
+        XTDBSolution()  # Uncomment when XTDB is running
     ]
     await asyncio.gather(
         *[solution.initialize_collections() for solution in solutions]

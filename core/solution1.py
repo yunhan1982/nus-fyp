@@ -5,6 +5,7 @@ from typing import List
 import motor.motor_asyncio
 from .bitemporal_space import Rectangle
 from .utils.timing import Timer
+from .utils.timing import Timer
 
 
 class Solution1: 
@@ -152,23 +153,23 @@ class Solution1:
             
             # Step 2: Execute name query
             name_index_entries = await self.db.Index.find(name_query).to_list(None)
-            t.stage("Name Query Execution")
+            timer.stage("Name Query Execution")
             
             name_index_entries = [entry for entry in name_index_entries 
                                 if entry.get("data", {}).get("name") == name]
-            t.stage("Name Filter")
+            timer.stage("Name Filter")
             
             if not name_index_entries:
                 return []
             
             # Step 3: Get erefs
             erefs = {entry["eref"] for entry in name_index_entries}
-            t.stage("ERef Extraction")
+            timer.stage("ERef Extraction")
 
             # Step 4: Create hash for age query
             age_item = {"age": age}
             age_hash = Binary(bytes.fromhex(hashlib.md5(str(age_item).encode('utf-8')).hexdigest()), UUID_SUBTYPE)
-            t.stage("Hash Creation - Age")
+            timer.stage("Hash Creation - Age")
             
             age_query = {
                 "hash": age_hash,
@@ -183,18 +184,18 @@ class Solution1:
             
             # Step 5: Execute age query
             age_index_entries = await self.db.Index.find(age_query).to_list(None)
-            t.stage("Age Query Execution")
+            timer.stage("Age Query Execution")
             
             age_index_entries = [entry for entry in age_index_entries 
                                 if entry.get("data", {}).get("age") == age]
-            t.stage("Age Filter")
+            timer.stage("Age Filter")
             
             if not age_index_entries:
                 return []
             
             # Step 6: Get matching vrefs
             matching_vrefs = {entry["vref"] for entry in age_index_entries}
-            t.stage("vref Extraction")
+            timer.stage("vref Extraction")
             
             # Step 7: Final payload query
             if matching_vrefs:

@@ -1,0 +1,33 @@
+# Core dependencies for bitemporal data storage solutions
+
+# MongoDB solutions (Solution1, Solution2, Solution4)
+motor>=3.3.0
+pymongo>=4.5.0
+
+# DuckDB solutions (Solution3, Solution5)
+duckdb>=0.9.0
+
+# PostgreSQL solution (original xtdb_solution.py)
+psycopg>=3.1.0
+
+# XTDB solution
+asyncpg>=3.8.0
+
+# MarkLogic solution
+requests>=2.31.0  # For MarkLogic REST API
+
+# Utility dependencies
+numpy>=1.24.0
+pandas>=2.0.0
+python-dateutil>=2.8.0
+
+# Development and testing
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+
+# Optional: For enhanced performance
+uvloop>=0.17.0; sys_platform != "win32"
+
+# Optional: For data visualization and analysis
+matplotlib>=3.7.0
+seaborn>=0.12.0

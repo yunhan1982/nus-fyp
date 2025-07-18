@@ -1,8 +1,6 @@
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Callable, Any
-
-# Constants
-INFINITY = datetime(9999, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
+from core.utils.constants import DATETIME_MAX
 
 # Rectangle class to represent a timeslice
 class Rectangle:
@@ -56,11 +54,11 @@ class BitemporalSpace:
         self.time_slice_count = 0
         
     def on_tx_time(self, tt: datetime) -> List[Rectangle]:
-        active = [r for r in self.rects if (r.tt_to == INFINITY and tt == INFINITY) and (r.tt_from <= tt <= r.tt_to)]
+        active = [r for r in self.rects if (r.tt_to == DATETIME_MAX and tt == DATETIME_MAX) and (r.tt_from <= tt <= r.tt_to)]
         return sorted(active, key=lambda r: r.vt_from)
     
     def insert_point(self, item: Optional[Dict[str, Any]], vtf: datetime, filter_func: Callable[[Rectangle], bool] = lambda _: False) -> List[UpdateAction]:
-        rects = self.on_tx_time(INFINITY)
+        rects = self.on_tx_time(DATETIME_MAX)
         rect_option = next((r for r in rects if vtf < r.vt_to), None)
 
         def insert(vtt: datetime, cur_rect: Optional[Rectangle] = None) -> List[UpdateAction]:
@@ -79,7 +77,7 @@ class BitemporalSpace:
             adjust = Invalidate(rect_option) if rect_option.vt_from == vtf else AdjustVTInterval(rect_option, rect_option.vt_from, vtf)
             return [adjust] + insert(rect_option.vt_to, rect_option)
         else:
-            return insert(INFINITY)
+            return insert(DATETIME_MAX)
 
     def execute(self, actions: List[UpdateAction], tt: datetime) -> None:
         new_rects = self.rects.copy()
@@ -88,7 +86,7 @@ class BitemporalSpace:
         for action in actions:
             if isinstance(action, Insert):
                 self.time_slice_count += 1
-                new_rects.append(Rectangle(action.data, tt, INFINITY, action.vt_from, action.vt_to, self.time_slice_count))
+                new_rects.append(Rectangle(action.data, tt, DATETIME_MAX, action.vt_from, action.vt_to, self.time_slice_count))
             elif isinstance(action, Invalidate):
                 idx = new_rects.index(action.rect)
                 new_rects[idx] = Rectangle(action.rect.data, action.rect.tt_from, tt, action.rect.vt_from, action.rect.vt_to, action.rect.index)
@@ -96,7 +94,7 @@ class BitemporalSpace:
                 idx = new_rects.index(action.rect)
                 new_rects[idx] = Rectangle(action.rect.data, action.rect.tt_from, tt, action.rect.vt_from, action.rect.vt_to, action.rect.index)
                 self.time_slice_count += 1
-                new_rects.append(Rectangle(action.rect.data, tt, INFINITY, action.vt_from, action.vt_to, self.time_slice_count))
+                new_rects.append(Rectangle(action.rect.data, tt, DATETIME_MAX, action.vt_from, action.vt_to, self.time_slice_count))
         self.rects = new_rects
 
 

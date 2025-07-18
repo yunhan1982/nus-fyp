@@ -1,28 +1,45 @@
 version: "3.8"
 
 services:
-  # xtdb:
-  #   image: ghcr.io/xtdb/xtdb-in-memory:1.23.2
-  #   container_name: xtdb-in-memory
-  #   ports:
-  #     - "3000:3000"
-  #   restart: unless-stopped
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-f", "http://localhost:3000/status"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 3
-  #     start_period: 10s
-
-  duckdb:
-    image: qldrsc/duckdb:latest
-    volumes:
-      - ./data:/data
+  xtdb:
+    image: ghcr.io/xtdb/xtdb:latest
+    container_name: xtdb-v2
     ports:
-      - "4000:4000"
-    command: ["--http", "--port", "4000", "--data", "/data"]
+      - "5432:5432"  # Postgres wire protocol (primary API)
+      - "8080:8080"  # Monitoring/healthz HTTP endpoints
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz/alive"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  marklogic:
+    image: progressofficial/marklogic-db:latest
+    container_name: marklogic-server
+    ports:
+      - "8000:8000"  # App Server port
+      - "8001:8001"  # Admin interface
+      - "8002:8002"  # Manage interface
+    environment:
+      - MARKLOGIC_INIT=true
+      - MARKLOGIC_ADMIN_USERNAME=admin
+      - MARKLOGIC_ADMIN_PASSWORD=admin123
+      - MARKLOGIC_WALLET_PASSWORD=admin123
+      - REALM=public
+    volumes:
+      - marklogic_data:/var/opt/MarkLogic
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/admin/v1/timestamp"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
 volumes:
   data:
+    driver: local
+  marklogic_data:
     driver: local

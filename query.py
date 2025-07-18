@@ -1,10 +1,13 @@
 import asyncio
 from datetime import datetime, timezone
 from core.utils.timing import timer
+from core.utils.timing import timer
 from core.solution1 import Solution1
 from core.solution2 import Solution2
 from core.solution3 import Solution3
 from core.solution4 import Solution4
+from core.solution5 import Solution5
+from core.xtdb_solution import XTDBSolution
 
 async def run_query(solution, name: str, age: int, tt: datetime, vt: datetime):
     async with timer(f"{solution.name} Query") as t:
@@ -21,17 +24,18 @@ async def main():
     solutions = [
         # Solution1(), 
         Solution2(), 
-        # Solution3()
-        Solution4()
+        Solution3(),
+        Solution4(),
+        Solution5(),
+        XTDBSolution()
     ]
-
-
     # Query parameters
-    tt = datetime(2018, 12, 9, 0, 0, 0, tzinfo=timezone.utc)
-    vt = datetime(2018, 9, 17, 0, 0, 0, tzinfo=timezone.utc)
-    name, age = "Student_2121", 18
+    tt = datetime(2018, 1, 8, 0, 0, 0, tzinfo=timezone.utc)
+    vt = datetime(2018, 1, 6, 0, 0, 0, tzinfo=timezone.utc)
+    name, age = "Student_2755", 16
+
 
     for solution in solutions:
-        await run_query(solution, name, age, tt, vt) 
+        await run_query(solution, name, age, tt, vt)
 if __name__ == "__main__":
     asyncio.run(main())

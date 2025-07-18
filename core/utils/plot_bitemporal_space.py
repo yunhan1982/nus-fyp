@@ -36,8 +36,8 @@ def plot_bitemporal_space(space: BitemporalSpace, title: str = "Bitemporal Space
             color=colors[i], 
             alpha=0.6, 
             edgecolor='none',
-            label=f"Index {rect.index} (Age: {rect.data['age']})"
-        )  
+            label=f"Index {rect.index} (Age: {rect.data['payload']['age']})"
+        )
 
     # Format axes
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
