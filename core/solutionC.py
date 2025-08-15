@@ -8,9 +8,9 @@ from .bitemporal_space import Rectangle
 from .utils.timing import Timer
 
 
-class Solution4: 
+class SolutionC: 
     def __init__(self) -> None:
-        self.name = "Solution4"
+        self.name = "SolutionC"
         self.client = motor.motor_asyncio.AsyncIOMotorClient('mongodb://localhost:27017/', uuidRepresentation='standard')
         self.db = self.client[self.name]
         self.collections = ["Name", "Age", "Attr1", "Attr2", "Attr3", "Attr4"]
@@ -75,6 +75,9 @@ class Solution4:
 
 
     async def query_by_name_and_age(self, name, age, tt, vt, entity="Student"):
+        # Track memory usage
+        initial_memory = await self._get_memory_usage()
+        
         pipeline = [
             # Match documents from Name collection
             {
@@ -159,6 +162,47 @@ class Solution4:
             }
         ]
         
+        # Get explain for aggregation pipeline
+        explain_result = await self.db.command("explain", {"aggregate": "Name", "pipeline": pipeline, "cursor": {}})
+        
         results = await self.db["Name"].aggregate(pipeline).to_list(None)
+        
+        # Log memory usage information
+        final_memory = await self._get_memory_usage()
+        memory_used = final_memory - initial_memory
+        print(f"{self.name} Memory Usage: {memory_used:.2f} MB")
+        
+        # Log aggregation execution stats if available
+        self._log_aggregation_stats("Aggregation Pipeline", explain_result)
+        
         return results
+    
+    async def _get_memory_usage(self):
+        """Get current memory usage from MongoDB server status."""
+        try:
+            server_status = await self.db.command("serverStatus")
+            # Return memory usage in MB
+            return server_status.get("mem", {}).get("resident", 0)
+        except Exception:
+            return 0
+    
+    def _log_aggregation_stats(self, query_name, explain_result):
+        """Log aggregation execution statistics."""
+        try:
+            if explain_result and len(explain_result) > 0:
+                stages = explain_result[0].get("stages", [])
+                total_docs_examined = 0
+                total_docs_returned = 0
+                total_execution_time = 0
+                
+                for stage in stages:
+                    if "executionStats" in stage:
+                        stats = stage["executionStats"]
+                        total_docs_examined += stats.get("totalDocsExamined", 0)
+                        total_docs_returned += stats.get("totalDocsReturned", 0)
+                        total_execution_time += stats.get("executionTimeMillis", 0)
+                
+                print(f"{self.name} {query_name} Stats: {total_docs_examined} docs examined, {total_docs_returned} returned, {total_execution_time}ms")
+        except Exception:
+            pass
         

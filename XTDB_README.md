@@ -26,6 +26,7 @@ This separation allows for efficient temporal queries while maintaining data int
 ### Table Structure
 
 **temporal_data Table:**
+
 ```sql
 CREATE TABLE temporal_data (
     id TEXT PRIMARY KEY,
@@ -40,6 +41,7 @@ CREATE TABLE temporal_data (
 ```
 
 **payload_data Table:**
+
 ```sql
 CREATE TABLE payload_data (
     vref TEXT PRIMARY KEY,
@@ -48,6 +50,7 @@ CREATE TABLE payload_data (
 ```
 
 **Sample Data:**
+
 ```sql
 -- Temporal record
 INSERT INTO temporal_data VALUES (
@@ -117,30 +120,30 @@ async def example():
         user="xtdb",
         password="xtdb"
     )
-    
+
     try:
         # Connect to XTDB v2 via PostgreSQL wire protocol
         await solution.connect()
-        
+
         # Initialize tables
         await solution.initialize_collections()
-        
+
         # Insert data (rectangles from generate_rectangles)
         await solution.insert_rectangle_to_collections(rectangles)
-        
+
         # Query data using SQL
         results = await solution.query_by_name_and_age(
-            "John", 25, 
-            datetime.now(timezone.utc), 
+            "John", 25,
+            datetime.now(timezone.utc),
             datetime.now(timezone.utc)
         )
-        
+
         # Get all entities
         entities = await solution.get_all_entities()
-        
+
         # Get data history
         history = await solution.get_data_history(entity_id)
-        
+
     finally:
         await solution.cleanup()
 
@@ -152,7 +155,7 @@ asyncio.run(example())
 ```python
 # In generate_mock_data.py, uncomment the XTDB solution:
 solutions = [
-    Solution5(),
+    SolutionE(),
     XTDBSolution()  # Enable XTDB solution
 ]
 ```
@@ -226,26 +229,32 @@ solutions = [
 ### Common Issues
 
 1. **Connection Failed**
+
    ```
    Error: Cannot connect to XTDB v2 at localhost:5432
    ```
+
    - Ensure XTDB v2 is running: `docker-compose up xtdb-v2`
    - Check if port 5432 is available
    - Verify XTDB v2 health: `curl http://localhost:8080/healthz/alive`
    - Test PostgreSQL connection: `psql -h localhost -p 5432 -U xtdb -d xtdb`
 
 2. **SQL Execution Errors**
+
    ```
    Error: SQL execution failed
    ```
+
    - Check table structure exists (run initialize_collections())
    - Ensure JSONB data is properly formatted
    - Verify temporal constraints use correct timestamp format
 
 3. **Query Errors**
+
    ```
    Error: Query returned no results
    ```
+
    - Validate SQL query syntax
    - Check temporal constraints are properly formatted
    - Ensure JSONB field paths are correct (e.g., payload->>'name')
@@ -280,13 +289,13 @@ rectangles = generate_rectangles(num_ids=10, num_points_per_id=5)
 
 ## Comparison with Other Solutions
 
-| Feature | XTDB | MongoDB | DuckDB | PostgreSQL |
-|---------|------|---------|--------|-----------|
-| Native Bitemporal | ✅ | ❌ | ❌ | ❌ |
-| Schema Flexibility | ✅ | ✅ | ❌ | ❌ |
-| Query Language | Datalog | MongoDB Query | SQL | SQL |
-| ACID Compliance | ✅ | ✅ | ✅ | ✅ |
-| Horizontal Scaling | ✅ | ✅ | ❌ | Limited |
+| Feature            | XTDB    | MongoDB       | DuckDB | PostgreSQL |
+| ------------------ | ------- | ------------- | ------ | ---------- |
+| Native Bitemporal  | ✅      | ❌            | ❌     | ❌         |
+| Schema Flexibility | ✅      | ✅            | ❌     | ❌         |
+| Query Language     | Datalog | MongoDB Query | SQL    | SQL        |
+| ACID Compliance    | ✅      | ✅            | ✅     | ✅         |
+| Horizontal Scaling | ✅      | ✅            | ❌     | Limited    |
 
 ## Future Enhancements
 

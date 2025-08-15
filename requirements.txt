@@ -1,10 +1,10 @@
 # Core dependencies for bitemporal data storage solutions
 
-# MongoDB solutions (Solution1, Solution2, Solution4)
+# MongoDB solutions (SolutionA, SolutionB, SolutionC)
 motor>=3.3.0
 pymongo>=4.5.0
 
-# DuckDB solutions (Solution3, Solution5)
+# DuckDB solutions (SolutionD, SolutionE)
 duckdb>=0.9.0
 
 # PostgreSQL solution (original xtdb_solution.py)

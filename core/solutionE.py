@@ -1,25 +1,21 @@
-import hashlib
-import json
-import uuid
 from typing import Dict, Any, List
 from collections import defaultdict
 import duckdb
 import copy
 
 from .bitemporal_space import Rectangle
-from .utils.timing import Timer
 from .utils.constants import DATETIME_MAX
 
-class Solution5:
+class SolutionE:
     def __init__(self) -> None:
-        self.name = "Solution5"
+        self.name = "SolutionE"
         self.connection = None
-        self.memory_limit = '4GB'
+        self.memory_limit = '8GB'
         self.collections = ["Name", "Age", "Attr1", "Attr2", "Attr3", "Attr4"]
 
     async def connect(self):
         """Connect to DuckDB instance"""
-        self.connection = duckdb.connect(database='duckdb_data/solution5.db')
+        self.connection = duckdb.connect(database=f'duckdb_data/{self.name}.db')
         self.connection.execute("INSTALL httpfs; LOAD httpfs;")
         self.connection.execute("INSTALL json; LOAD json;")
         self.connection.execute(f"SET memory_limit='{self.memory_limit}';")
@@ -34,7 +30,7 @@ class Solution5:
             print(f"{self.name}: Disconnected from DuckDB database")
 
     async def initialize_collections(self):
-        """Initialize tables with proper schema and indexes - mimicking Solution4's collection structure"""
+        """Initialize tables with proper schema and indexes - mimicking SolutionC's collection structure"""
         if not self.connection:
             await self.connect()
         
@@ -42,7 +38,7 @@ class Solution5:
         for collection in self.collections:
             self.connection.execute(f"DROP TABLE IF EXISTS {collection}")
         
-        # Create tables for each collection (similar to Solution4's MongoDB collections)
+        # Create tables for each collection (similar to SolutionC's MongoDB collections)
         for collection in self.collections:
             create_table_sql = f"""
             CREATE TABLE {collection} (
@@ -57,7 +53,7 @@ class Solution5:
             """
             self.connection.execute(create_table_sql)
             
-            # Create indexes similar to Solution4's MongoDB indexes
+            # Create indexes similar to SolutionC's MongoDB indexes
             self.connection.execute(f"CREATE INDEX idx_{collection}_value_tt_vt ON {collection} (value, tt_from, vt_from)")
             self.connection.execute(f"CREATE INDEX idx_{collection}_value_tt_to_vt_to ON {collection} (value, tt_to, vt_to)")
             self.connection.execute(f"CREATE INDEX idx_{collection}_eref ON {collection} (eref)")
@@ -65,7 +61,7 @@ class Solution5:
         print(f"{self.name}: Tables initialized with appropriate indexes")
 
     async def insert_rectangle_to_collections(self, rectangles: List[Rectangle], entity: str = "Student") -> None:
-        """Insert rectangles into tables using the same logic as Solution4"""
+        """Insert rectangles into tables using the same logic as SolutionC"""
         if not self.connection:
             await self.connect()
 
@@ -146,15 +142,18 @@ class Solution5:
                     raise
 
     async def query_by_name_and_age(self, name, age, tt, vt, entity="Student"):
-        """Query data with bitemporal filtering using SQL join - equivalent to Solution4's aggregation pipeline"""
+        """Query data with bitemporal filtering using SQL join - equivalent to SolutionC's aggregation pipeline"""
         if not self.connection:
             await self.connect()
+        
+        # Track memory usage
+        initial_memory = self._get_memory_usage()
         
         # Convert inputs to strings for consistency
         name = str(name)
         age = str(age)
         
-        # SQL equivalent of Solution4's MongoDB aggregation pipeline
+        # SQL equivalent of SolutionC's MongoDB aggregation pipeline
         query = """
         SELECT 
             n.eref AS id,
@@ -179,13 +178,29 @@ class Solution5:
         AND a.vt_from < LEAST(n.vt_to, a.vt_to)
         """
         
+        # Get query plan for analysis
+        explain_query = "EXPLAIN " + query
+        explain_result = self.connection.execute(explain_query, (
+            name, age, entity, 
+            tt, tt, vt, vt,  # for Name table conditions
+            tt, tt, vt, vt   # for Age table conditions
+        )).fetchall()
+        
         results = self.connection.execute(query, (
             name, age, entity, 
             tt, tt, vt, vt,  # for Name table conditions
             tt, tt, vt, vt   # for Age table conditions
         )).fetchall()
         
-        # Convert results to list of dictionaries matching Solution4's format
+        # Log memory usage information
+        final_memory = self._get_memory_usage()
+        memory_used = final_memory - initial_memory
+        print(f"{self.name} Memory Usage: {memory_used:.2f} MB")
+        
+        # Log query execution info
+        self._log_query_stats("SQL Join Query", explain_result)
+        
+        # Convert results to list of dictionaries matching SolutionC's format
         return [
             {
                 "id": row[0],
@@ -198,6 +213,26 @@ class Solution5:
             }
             for row in results
         ]
+    
+    def _get_memory_usage(self):
+        """Get current memory usage from DuckDB."""
+        try:
+            result = self.connection.execute("PRAGMA memory_usage").fetchone()
+            # Convert bytes to MB
+            return result[0] / (1024 * 1024) if result else 0
+        except Exception:
+            return 0
+    
+    def _log_query_stats(self, query_name, explain_result):
+        """Log query execution statistics."""
+        try:
+            if explain_result:
+                print(f"{self.name} {query_name} Plan: {len(explain_result)} steps")
+                # Log first few steps of the execution plan
+                for i, step in enumerate(explain_result[:3]):
+                    print(f"{self.name} Step {i+1}: {step[0]}")
+        except Exception:
+            pass
 
     async def get_all_entities(self, entity: str = "Student") -> List[str]:
         """Retrieve all unique entity IDs."""

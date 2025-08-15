@@ -7,16 +7,16 @@ import duckdb
 # Assuming this is imported from the existing code
 from .bitemporal_space import Rectangle
 
-class Solution3:
+class SolutionD:
     def __init__(self) -> None:
-        self.name = "Solution3"
+        self.name = "SolutionD"
         self.connection = None
         self.indices = ["name", "age", "attr1", "attr2", "attr3", "attr4"]
-        self.memory_limit = '4GB'
+        self.memory_limit = '8GB'
     
     async def connect(self):
         """Connect to DuckDB instance"""
-        self.connection = duckdb.connect('duckdb_data/solution3.db')
+        self.connection = duckdb.connect(f'duckdb_data/{self.name}.db')
         # Enable JSON extension for handling JSON data
         self.connection.execute("INSTALL httpfs; LOAD httpfs;")
         self.connection.execute("INSTALL json; LOAD json;")
@@ -105,8 +105,10 @@ class Solution3:
             data_str = json.dumps(rect.data["payload"], sort_keys=True)
             vref = uuid.UUID(bytes=hashlib.md5(data_str.encode()).digest())
             
-            # Generate eref: using rect.data["id"] if available; otherwise, default to 0
-            eref = rect.data.get("id", 0)
+            # Generate eref: convert integer ID to UUID
+            entity_id = rect.data.get("id", 0)
+            # Convert integer to UUID by padding with zeros
+            eref = uuid.UUID(int=entity_id)
             
             # Build values for Index_data (vref, data, plus dynamic fields)
             row_values = [vref, json.dumps(rect.data["payload"])]
@@ -164,6 +166,9 @@ class Solution3:
         if not self.connection:
             await self.connect()
         
+        # Track memory usage
+        initial_memory = self._get_memory_usage()
+        
         # Adjusted query to select from Index_data now that Payload has been removed
         query = """
         WITH matched_indices AS (
@@ -183,6 +188,18 @@ class Solution3:
         JOIN matched_indices m ON i_data.vref = m.vref
         """
         
+        # Get query plan for analysis
+        explain_query = "EXPLAIN " + query
+        explain_result = self.connection.execute(explain_query, (
+            name,
+            age,
+            entity,
+            tt,
+            tt,
+            vt,
+            vt
+        )).fetchall()
+        
         results = self.connection.execute(query, (
             name,
             age,
@@ -193,5 +210,33 @@ class Solution3:
             vt
         )).fetchall()
         
+        # Log memory usage information
+        final_memory = self._get_memory_usage()
+        memory_used = final_memory - initial_memory
+        print(f"{self.name} Memory Usage: {memory_used:.2f} MB")
+        
+        # Log query execution info
+        self._log_query_stats("SQL Query", explain_result)
+        
         # Parse JSON data from results
         return [json.loads(row[0]) for row in results]
+    
+    def _get_memory_usage(self):
+        """Get current memory usage from DuckDB."""
+        try:
+            result = self.connection.execute("PRAGMA memory_usage").fetchone()
+            # Convert bytes to MB
+            return result[0] / (1024 * 1024) if result else 0
+        except Exception:
+            return 0
+    
+    def _log_query_stats(self, query_name, explain_result):
+        """Log query execution statistics."""
+        try:
+            if explain_result:
+                print(f"{self.name} {query_name} Plan: {len(explain_result)} steps")
+                # Log first few steps of the execution plan
+                for i, step in enumerate(explain_result[:3]):
+                    print(f"{self.name} Step {i+1}: {step[0]}")
+        except Exception:
+            pass

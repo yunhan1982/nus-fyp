@@ -5,12 +5,11 @@ from typing import List
 import motor.motor_asyncio
 from .bitemporal_space import Rectangle
 from .utils.timing import Timer
-from .utils.timing import Timer
 
 
-class Solution1: 
+class SolutionA3: 
     def __init__(self) -> None:
-        self.name = "Solution1"
+        self.name = "SolutionA3"
         self.client = motor.motor_asyncio.AsyncIOMotorClient('mongodb://localhost:27017/', uuidRepresentation='standard')
         self.db = self.client[self.name]
         self.indices = ["name", "age", "attr1", "attr2", "attr3", "attr4"]
@@ -26,24 +25,18 @@ class Solution1:
         await self.db.Timeslices.drop()
         await self.db.Index.drop()
 
-
         await self.db.Payloads.create_index("vref", unique=True)
-        await self.db.Timeslices.create_index([("eref", 1), ("seq_no", 1)], unique=True)
-        # await db.Index.create_index(
-        #     ("eref", 1)
-        # )
+        # await self.db.Timeslices.create_index([("eref", 1), ("seq_no", 1)], unique=True)
+
         await self.db.Index.create_index([
             ("hash", 1),
             ("vt_from", 1),
-            ("tt_from", 1)
-        ])
-        await self.db.Index.create_index([
-            ("hash", 1),
+            ("tt_from", 1),
             ("vt_to", 1),
             ("tt_to", 1)
         ])
 
-        print("Solution1 Index, Timeslices and Payload collection schemas created with appropriate indexes.")
+        print(f"{self.name} Index, Timeslices and Payload collection schemas created with appropriate indexes.")
 
 
     # Main function to insert rectangles
@@ -62,21 +55,22 @@ class Solution1:
             eref = rect.data.get("id", 0)
             seq_no = str(rect.index)
             # Payload document
-            if vref not in payload_vrefs:
+            vref_binary = Binary.from_uuid(vref)
+            if vref_binary not in payload_vrefs:
                 payload = {
-                    "vref": vref,
+                    "vref": vref_binary,
                     "name": rect.data["payload"].get("name"),
                     "age": rect.data["payload"].get("age")
                 }
                 payloads_batch.append(payload)
-                payload_vrefs.add(vref)
+                payload_vrefs.add(vref_binary)
             
             # Timeslice document
             timeslice_key = (eref, seq_no)
 
             if timeslice_key not in timeslice_keys:
                 timeslice = {
-                    "vref": vref,
+                    "vref": vref_binary,
                     "eref": eref,
                     "seq_no": seq_no,  # For simplicity, using fixed sequence number
                     "tt_from": rect.tt_from,
@@ -94,7 +88,7 @@ class Solution1:
                 key_hash = hashlib.md5(str(item).encode('utf-8')).hexdigest()
                     
                 index_entry = {
-                    "vref": vref,
+                    "vref": vref_binary,
                     "eref": eref,
                     "tt_from": rect.tt_from,
                     "tt_to": rect.tt_to,
@@ -135,6 +129,9 @@ class Solution1:
         timer = Timer("MongoDB Query Performance")
         timer.start()
         
+        # Track memory usage
+        initial_memory = await self._get_memory_usage()
+        
         try:
             # Step 1: Create hash for name query
             name_item = {"name": name}
@@ -151,7 +148,8 @@ class Solution1:
                 "key": "name"
             }
             
-            # Step 2: Execute name query
+            # Step 2: Execute name query with explain for memory stats
+            name_explain = await self.db.command("explain", {"find": "Index", "filter": name_query})
             name_index_entries = await self.db.Index.find(name_query).to_list(None)
             timer.stage("Name Query Execution")
             
@@ -182,7 +180,8 @@ class Solution1:
                 "key": "age"
             }
             
-            # Step 5: Execute age query
+            # Step 5: Execute age query with explain for memory stats
+            age_explain = await self.db.command("explain", {"find": "Index", "filter": age_query})
             age_index_entries = await self.db.Index.find(age_query).to_list(None)
             timer.stage("Age Query Execution")
             
@@ -197,15 +196,52 @@ class Solution1:
             matching_vrefs = {entry["vref"] for entry in age_index_entries}
             timer.stage("vref Extraction")
             
-            # Step 7: Final payload query
+            # Step 7: Final payload query with explain for memory stats
             if matching_vrefs:
-                payloads = await self.db.Payloads.find(
-                    {"vref": {"$in": list(matching_vrefs)}}
-                ).to_list(None)
+                if len(matching_vrefs) == 1:
+                    vref = next(iter(matching_vrefs))
+                    payload_query = {"vref": vref}
+                else:
+                    payload_query = {"vref": {"$in": list(matching_vrefs)}}
+                
+                payload_explain = await self.db.command("explain", {"find": "Payloads", "filter": payload_query})
+                payloads = await self.db.Payloads.find(payload_query).to_list(None)
                 timer.stage("Payload Query")
+                
+                # Log memory usage information
+                final_memory = await self._get_memory_usage()
+                memory_used = final_memory - initial_memory
+                print(f"{self.name} Memory Usage: {memory_used:.2f} MB")
+                
+                # Log query execution stats if available
+                self._log_query_stats("Name Query", name_explain)
+                self._log_query_stats("Age Query", age_explain)
+                self._log_query_stats("Payload Query", payload_explain)
+                
                 return payloads
             
             return []
         finally:
             timer.stop()
+    
+    async def _get_memory_usage(self):
+        """Get current memory usage from MongoDB server status."""
+        try:
+            server_status = await self.db.command("serverStatus")
+            # Return memory usage in MB
+            return server_status.get("mem", {}).get("resident", 0)
+        except Exception:
+            return 0
+    
+    def _log_query_stats(self, query_name, explain_result):
+        """Log query execution statistics."""
+        try:
+            execution_stats = explain_result.get("executionStats", {})
+            if execution_stats:
+                docs_examined = execution_stats.get("totalDocsExamined", 0)
+                docs_returned = execution_stats.get("totalDocsReturned", 0)
+                execution_time = execution_stats.get("executionTimeMillis", 0)
+                print(f"{self.name} {query_name} Stats: {docs_examined} docs examined, {docs_returned} returned, {execution_time}ms")
+        except Exception:
+            pass
 

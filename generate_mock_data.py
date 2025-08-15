@@ -2,13 +2,17 @@ import asyncio
 from datetime import datetime, timezone
 from core.utils.generate_rectangles import generate_rectangles
 from core.utils.generate_student_data import generate_student_data
-from core.solution1 import Solution1
-from core.solution2 import Solution2
-from core.solution3 import Solution3
-from core.solution4 import Solution4
-from core.solution5 import Solution5
+from core.solutionA1 import SolutionA1
+from core.solutionA2 import SolutionA2
+from core.solutionA3 import SolutionA3
+from core.solutionB1 import SolutionB1
+from core.solutionB2 import SolutionB2
+from core.solutionD import SolutionD
+from core.solutionC import SolutionC
+from core.solutionE import SolutionE
 
 from core.xtdb_solution import XTDBSolution
+from core.marklogic_solution import MarkLogicSolution
 
 # Generate rectangles
 def generate_rectangles_data(
@@ -51,7 +55,7 @@ def generate_rectangles_data(
             generate_data=generate_student_data
         )
 
-# Run solution1 async
+# Run solutionA async
 async def run_solution(solution, rectangles):
     print(f"Starting {solution.name}...")
     await solution.insert_rectangle_to_collections(rectangles)
@@ -65,12 +69,16 @@ async def main():
 
 
     solutions = [
-        Solution1(), 
-        Solution2(),
-        Solution3(),
-        Solution4(),
-        Solution5(),
-        XTDBSolution()  # Uncomment when XTDB is running
+        SolutionA1(),
+        SolutionA2(),
+        SolutionA3(), 
+        SolutionB1(),
+        SolutionB2(),
+        SolutionC(),
+        SolutionD(),
+        SolutionE(),
+        # MarkLogicSolution(),
+        # XTDBSolution()
     ]
     await asyncio.gather(
         *[solution.initialize_collections() for solution in solutions]

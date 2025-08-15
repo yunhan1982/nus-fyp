@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Test script for MarkLogic Solution - equivalent to Solution2 but using MarkLogic
+Test script for MarkLogic Solution - equivalent to SolutionB but using MarkLogic
 
-This script demonstrates the MarkLogic implementation that mirrors Solution2's
+This script demonstrates the MarkLogic implementation that mirrors SolutionB's
 two-collection approach using MarkLogic's document database capabilities.
 
 Requirements:
@@ -18,7 +18,7 @@ from core.utils.generate_rectangles import generate_rectangles
 
 def test_marklogic_solution():
     """Test the MarkLogic solution with sample data"""
-    print("Testing MarkLogic Solution (equivalent to Solution2)")
+    print("Testing MarkLogic Solution (equivalent to SolutionB)")
     print("=" * 50)
     
     # Initialize solution
@@ -103,14 +103,14 @@ def test_marklogic_solution():
         print(f"✗ Delete operation failed: {e}")
     
     print("\nMarkLogic Solution test completed!")
-    print("\nNote: This implementation mirrors Solution2's two-collection approach:")
+    print("\nNote: This implementation mirrors SolutionB's two-collection approach:")
     print("- Index collection: metadata + temporal bounds + indexed fields")
     print("- Payload collection: actual data with unique vrefs")
-    print("- Same query patterns and temporal logic as Solution2")
+    print("- Same query patterns and temporal logic as SolutionB")
 
-def compare_with_solution2():
-    """Compare the approach with Solution2"""
-    print("\nComparison with Solution2:")
+def compare_with_solutionB():
+    """Compare the approach with SolutionB"""
+    print("\nComparison with SolutionB:")
     print("=" * 30)
     print("Similarities:")
     print("- Two-collection architecture (Index + Payload)")
@@ -129,4 +129,4 @@ def compare_with_solution2():
 
 if __name__ == "__main__":
     test_marklogic_solution()
-    compare_with_solution2()
+    compare_with_solutionB()

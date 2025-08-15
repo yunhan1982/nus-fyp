@@ -5,23 +5,23 @@ services:
     image: ghcr.io/xtdb/xtdb:latest
     container_name: xtdb-v2
     ports:
-      - "5432:5432"  # Postgres wire protocol (primary API)
-      - "8080:8080"  # Monitoring/healthz HTTP endpoints
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz/alive"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
+      - "5432:5432" # Postgres wire protocol (primary API)
+    #   - "8080:8080"  # Monitoring/healthz HTTP endpoints
+    # restart: unless-stopped
+    # healthcheck:
+    #   test: ["CMD", "curl", "-f", "http://localhost:8080/healthz/alive"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+    #   start_period: 10s
 
   marklogic:
     image: progressofficial/marklogic-db:latest
     container_name: marklogic-server
     ports:
-      - "8000:8000"  # App Server port
-      - "8001:8001"  # Admin interface
-      - "8002:8002"  # Manage interface
+      - "8000:8000" # App Server port
+      - "8001:8001" # Admin interface
+      - "8002:8002" # Manage interface
     environment:
       - MARKLOGIC_INIT=true
       - MARKLOGIC_ADMIN_USERNAME=admin

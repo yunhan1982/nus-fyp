@@ -1,14 +1,14 @@
 import hashlib
+from bson.binary import Binary
 from uuid import UUID
 from typing import Dict, Any, List
-from bson.binary import Binary, UUID_SUBTYPE
 import motor.motor_asyncio
 from .bitemporal_space import Rectangle
 
 
-class Solution2:
+class SolutionB1:
     def __init__(self) -> None:
-        self.name = "Solution2"
+        self.name = "SolutionB1"
         self.client = motor.motor_asyncio.AsyncIOMotorClient('mongodb://localhost:27017/', uuidRepresentation='standard')
         self.db = self.client[self.name]
         self.indices = ["name", "age", "attr1", "attr2", "attr3", "attr4"]
@@ -38,7 +38,7 @@ class Solution2:
             
         await self.db.Payload.create_index("vref", unique=True)
         
-        print("Solution2 Index and Payload collection schemas created with appropriate indexes.")
+        print(f"{self.name} Index and Payload collection schemas created with appropriate indexes.")
 
     # Function to compute MD5 hash of data (for Payload)
     @staticmethod
@@ -62,8 +62,9 @@ class Solution2:
             eref = rect.data.get("id", 0)   
             
             # Create base index entry
+            vref_binary = Binary.from_uuid(vref)
             index_entry = {
-                "vref": vref,
+                "vref": vref_binary,
                 "eref": eref,
                 "tt_from": rect.tt_from,
                 "tt_to": rect.tt_to,
@@ -79,13 +80,13 @@ class Solution2:
             index_batch.append(index_entry)
             
             # Payload document (only add unique vrefs)
-            if vref not in payload_vrefs:
+            if vref_binary not in payload_vrefs:
                 payload_entry = {
-                    "vref": vref,
+                    "vref": vref_binary,
                     "data": rect.data["payload"],
                 }
                 payload_batch.append(payload_entry)
-                payload_vrefs.add(vref)
+                payload_vrefs.add(vref_binary)
         
         # Perform batch inserts
         if index_batch:
@@ -104,6 +105,9 @@ class Solution2:
 
     
     async def query_by_name_and_age(self, name, age, tt, vt, entity="Student"):
+        # Track memory usage
+        initial_memory = await self._get_memory_usage()
+        
         # First query the Index collection to find matching records
         index_query = {
             "name": name,
@@ -115,7 +119,8 @@ class Solution2:
             "vt_to": {"$gt": vt}
         }
         
-        # Get matching vrefs from Index
+        # Get matching vrefs from Index with explain for memory stats
+        index_explain = await self.db.command("explain", {"find": "Index", "filter": index_query})
         cursor = self.db.Index.find(index_query)
         
         vrefs = [doc["vref"] for doc in await cursor.to_list(length=None)]
@@ -124,12 +129,47 @@ class Solution2:
             return []
             
         # Query Payload collection for the actual data
-        payload_query = {"vref": {"$in": vrefs}}
+        if len(vrefs) == 1:
+            payload_query = {"vref": vrefs[0]}
+        else:
+            payload_query = {"vref": {"$in": vrefs}}
+        
+        payload_explain = await self.db.command("explain", {"find": "Payload", "filter": payload_query})
         cursor = self.db.Payload.find(payload_query)
         
         # Return the data from matching payloads
         results = []
         async for doc in cursor:
             results.append(doc)
+        
+        # Log memory usage information
+        final_memory = await self._get_memory_usage()
+        memory_used = final_memory - initial_memory
+        print(f"{self.name} Memory Usage: {memory_used:.2f} MB")
+        
+        # Log query execution stats if available
+        self._log_query_stats("Index Query", index_explain)
+        self._log_query_stats("Payload Query", payload_explain)
             
         return results
+    
+    async def _get_memory_usage(self):
+        """Get current memory usage from MongoDB server status."""
+        try:
+            server_status = await self.db.command("serverStatus")
+            # Return memory usage in MB
+            return server_status.get("mem", {}).get("resident", 0)
+        except Exception:
+            return 0
+    
+    def _log_query_stats(self, query_name, explain_result):
+        """Log query execution statistics."""
+        try:
+            execution_stats = explain_result.get("executionStats", {})
+            if execution_stats:
+                docs_examined = execution_stats.get("totalDocsExamined", 0)
+                docs_returned = execution_stats.get("totalDocsReturned", 0)
+                execution_time = execution_stats.get("executionTimeMillis", 0)
+                print(f"{self.name} {query_name} Stats: {docs_examined} docs examined, {docs_returned} returned, {execution_time}ms")
+        except Exception:
+            pass

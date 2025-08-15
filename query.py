@@ -30,9 +30,9 @@ async def main():
         XTDBSolution()
     ]
     # Query parameters
-    tt = datetime(2018, 1, 8, 0, 0, 0, tzinfo=timezone.utc)
-    vt = datetime(2018, 1, 6, 0, 0, 0, tzinfo=timezone.utc)
-    name, age = "Student_2755", 16
+    tt = datetime(2025, 3, 1, 0, 0, 0, tzinfo=timezone.utc)
+    vt = datetime(2025, 1, 5, 0, 0, 0, tzinfo=timezone.utc)
+    name, age = "Student_3932", 16
 
 
     for solution in solutions:

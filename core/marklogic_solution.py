@@ -1,6 +1,7 @@
 import hashlib
 import json
 import requests
+from requests.auth import HTTPDigestAuth
 from uuid import UUID, uuid4
 from typing import Dict, Any, List
 from .bitemporal_space import Rectangle
@@ -8,27 +9,27 @@ from .bitemporal_space import Rectangle
 
 class MarkLogicSolution:
     """
-    MarkLogic equivalent of Solution2 using the same two-collection approach.
+    MarkLogic equivalent of SolutionB using the same two-collection approach.
     
-    This implementation mirrors Solution2's logic:
+    This implementation mirrors SolutionB's logic:
     - Index collection: stores metadata and temporal bounds with indexed fields
     - Payload collection: stores actual data with unique vrefs
     - Uses MarkLogic REST API for document operations and XQuery for queries
-    - Maintains the same query patterns and temporal logic as Solution2
+    - Maintains the same query patterns and temporal logic as SolutionB
     """
-    def __init__(self, host='localhost', port=8000, username='admin', password='admin') -> None:
+    def __init__(self, host='localhost', port=8000, username='admin', password='admin123') -> None:
         self.name = "MarkLogicSolution"
         self.host = host
         self.port = port
         self.username = username
         self.password = password
         self.base_url = f"http://{host}:{port}"
-        self.auth = (username, password)
+        self.auth = HTTPDigestAuth(username, password)
         self.indices = ["name", "age", "attr1", "attr2", "attr3", "attr4"]
         self.index_collection = "index-collection"
         self.payload_collection = "payload-collection"
     
-    def initialize_collections(self):
+    async def initialize_collections(self):
         """Initialize MarkLogic collections and indexes"""
         try:
             # Clear existing documents in collections
