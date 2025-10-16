@@ -221,6 +221,211 @@ class SolutionD:
         # Parse JSON data from results
         return [json.loads(row[0]) for row in results]
     
+    async def range_query_by_name_and_age(self, name, age, vt_from, vt_to, tt_from, tt_to, entity="Student"):
+        """Range query records by name and age within VT and TT intervals."""
+        if not self.connection:
+            await self.connect()
+        
+        # Track memory usage
+        initial_memory = self._get_memory_usage()
+        
+        # SQL query with interval-based time constraints
+        query = """
+        WITH matched_indices AS (
+            SELECT i_ts.vref
+            FROM Index_ts i_ts
+            JOIN Index_data i_data ON i_ts.vref = i_data.vref
+            WHERE i_data.name = ?
+            AND i_data.age = ?
+            AND i_ts.entity = ?
+            AND i_ts.tt_from < ?
+            AND i_ts.tt_to > ?
+            AND i_ts.vt_from < ?
+            AND i_ts.vt_to > ?
+        )
+        SELECT i_data.data
+        FROM Index_data i_data
+        JOIN matched_indices m ON i_data.vref = m.vref
+        """
+        
+        # Get query plan for analysis
+        explain_query = "EXPLAIN " + query
+        explain_result = self.connection.execute(explain_query, (
+            name,
+            age,
+            entity,
+            tt_to,
+            tt_from,
+            vt_to,
+            vt_from
+        )).fetchall()
+        
+        results = self.connection.execute(query, (
+            name,
+            age,
+            entity,
+            tt_to,
+            tt_from,
+            vt_to,
+            vt_from
+        )).fetchall()
+        
+        # Log memory usage information
+        final_memory = self._get_memory_usage()
+        memory_used = final_memory - initial_memory
+        print(f"{self.name} Range Query Memory Usage: {memory_used:.2f} MB")
+        
+        # Log query execution info
+        self._log_query_stats("SQL Range Query", explain_result)
+        
+        # Parse JSON data from results
+        return [json.loads(row[0]) for row in results]
+
+    async def range_query_by_attribute(self, attribute_name, attribute_value, vt_from, vt_to, tt_from, tt_to, entity="Student"):
+        """Range query records by a single attribute within VT and TT intervals."""
+        if not self.connection:
+            await self.connect()
+        
+        # Track memory usage
+        initial_memory = self._get_memory_usage()
+        
+        # SQL query with interval-based time constraints for a single attribute
+        query = f"""
+        WITH matched_indices AS (
+            SELECT i_ts.vref
+            FROM Index_ts i_ts
+            JOIN Index_data i_data ON i_ts.vref = i_data.vref
+            WHERE i_data.{attribute_name} = ?
+            AND i_ts.entity = ?
+            AND i_ts.tt_from < ?
+            AND i_ts.tt_to > ?
+            AND i_ts.vt_from < ?
+            AND i_ts.vt_to > ?
+        )
+        SELECT i_data.data
+        FROM Index_data i_data
+        JOIN matched_indices m ON i_data.vref = m.vref
+        """
+        
+        # Get query plan for analysis
+        explain_query = "EXPLAIN " + query
+        explain_result = self.connection.execute(explain_query, (
+            attribute_value,
+            entity,
+            tt_to,
+            tt_from,
+            vt_to,
+            vt_from
+        )).fetchall()
+        
+        results = self.connection.execute(query, (
+            attribute_value,
+            entity,
+            tt_to,
+            tt_from,
+            vt_to,
+            vt_from
+        )).fetchall()
+        
+        # Log memory usage information
+        final_memory = self._get_memory_usage()
+        memory_used = final_memory - initial_memory
+        print(f"{self.name} Range Query Memory Usage: {memory_used:.2f} MB")
+        
+        # Log query execution info
+        self._log_query_stats(f"SQL {attribute_name} Range Query", explain_result)
+        
+        # Parse JSON data from results
+        return [json.loads(row[0]) for row in results]
+
+    async def delta_since_vt_range(self, name, age, vt_from, vt_to, tt, entity="Student"):
+        """Find entities at two VT points (vt_from, tt) and (vt_to, tt).
+        Returns a tuple (entity_at_start, entity_at_end) where each can be None if no entity exists."""
+        from .timer import Timer
+        timer = Timer()
+        timer.start()
+        
+        # Query for entity at (vt_from, tt)
+        entity_at_start = await self._query_at_point(name, age, vt_from, tt, entity)
+        entity_at_end = await self._query_at_point(name, age, vt_to, tt, entity)
+        
+        timer.stop()
+        memory_usage = self._get_memory_usage()
+        
+        return {
+            "result": (entity_at_start, entity_at_end),
+            "execution_time": timer.get_elapsed_time(),
+            "memory_usage": memory_usage
+        }
+    
+    async def delta_since_tt_range(self, name, age, tt_from, tt_to, vt, entity="Student"):
+        """Find entities at two TT points (vt, tt_from) and (vt, tt_to).
+        Returns a tuple (entity_at_start, entity_at_end) where each can be None if no entity exists.
+        If entities are identical, returns (None, None)."""
+        from .timer import Timer
+        timer = Timer()
+        timer.start()
+        
+        # Query for entity at (vt, tt_from) and (vt, tt_to)
+        entity_at_start = await self._query_at_point(name, age, vt, tt_from, entity)
+        entity_at_end = await self._query_at_point(name, age, vt, tt_to, entity)
+        
+        # If both entities exist and are identical, return (None, None)
+        if entity_at_start and entity_at_end and entity_at_start == entity_at_end:
+            entity_at_start = None
+            entity_at_end = None
+        
+        timer.stop()
+        memory_usage = self._get_memory_usage()
+        
+        return {
+            "result": (entity_at_start, entity_at_end),
+            "execution_time": timer.get_elapsed_time(),
+            "memory_usage": memory_usage
+        }
+    
+    async def _query_at_point(self, name, age, vt, tt, entity="Student"):
+        """Helper method to query entity at a specific bitemporal point using SQL."""
+        if not self.connection:
+            await self.connect()
+        
+        try:
+            query = """
+            WITH matched_indices AS (
+                SELECT i_ts.vref
+                FROM Index_ts i_ts
+                JOIN Index_data i_data ON i_ts.vref = i_data.vref
+                WHERE i_data.name = ?
+                AND i_data.age = ?
+                AND i_ts.entity = ?
+                AND i_ts.tt_from <= ?
+                AND i_ts.tt_to > ?
+                AND i_ts.vt_from <= ?
+                AND i_ts.vt_to > ?
+                LIMIT 1
+            )
+            SELECT i_data.data
+            FROM Index_data i_data
+            JOIN matched_indices m ON i_data.vref = m.vref
+            """
+            
+            results = self.connection.execute(query, (
+                name,
+                age,
+                entity,
+                tt,
+                tt,
+                vt,
+                vt
+            )).fetchall()
+            
+            if results:
+                return json.loads(results[0][0])
+            return None
+            
+        except Exception:
+            return None
+
     def _get_memory_usage(self):
         """Get current memory usage from DuckDB."""
         try:

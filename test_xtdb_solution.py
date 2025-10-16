@@ -83,7 +83,7 @@ async def test_xtdb_solution():
         print(f"\nQuerying for students at {query_time}...")
         
         # Get all entities first
-        entities = await solution.get_all_entities()
+        entities = await solution.get_all_entities(query_time, query_time)
         print(f"Found {len(entities)} unique entities")
         
         # Test query by name and age (using sample data)
@@ -119,7 +119,7 @@ async def test_xtdb_solution():
         
     except Exception as e:
         print(f"\nError during test: {e}")
-        print("Make sure XTDB v2 is running on localhost:5432")
+        print("Make sure XTDB v2 is running on localhost:5433")
         print("Run: docker-compose up xtdb")
         
     finally:

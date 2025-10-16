@@ -180,7 +180,7 @@ Each solution is tested with:
 
 ## Database Services
 
-### XTDB v2 (Port 5432)
+### XTDB v2 (Port 5433)
 
 - **Image**: `ghcr.io/xtdb/xtdb:latest`
 - **Purpose**: Native bitemporal database with PostgreSQL wire protocol

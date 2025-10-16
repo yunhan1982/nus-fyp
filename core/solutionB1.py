@@ -134,7 +134,7 @@ class SolutionB1:
         else:
             payload_query = {"vref": {"$in": vrefs}}
         
-        payload_explain = await self.db.command("explain", {"find": "Payload", "filter": payload_query})
+        # payload_explain = await self.db.command("explain", {"find": "Payload", "filter": payload_query})
         cursor = self.db.Payload.find(payload_query)
         
         # Return the data from matching payloads
@@ -149,10 +149,178 @@ class SolutionB1:
         
         # Log query execution stats if available
         self._log_query_stats("Index Query", index_explain)
-        self._log_query_stats("Payload Query", payload_explain)
+        # self._log_query_stats("Payload Query", payload_explain)
             
         return results
     
+    async def range_query_by_name_and_age(self, name, age, vt_from, vt_to, tt_from, tt_to, entity="Student"):
+        """Range query records by name and age within VT and TT intervals."""
+        # Track memory usage
+        initial_memory = await self._get_memory_usage()
+        
+        # Query the Index collection to find matching records within time intervals
+        index_query = {
+            "name": name,
+            "age": age,
+            "entity": entity,
+            "tt_from": {"$lt": tt_to},
+            "tt_to": {"$gt": tt_from},
+            "vt_from": {"$lt": vt_to},
+            "vt_to": {"$gt": vt_from}
+        }
+        
+        # Get matching vrefs from Index with explain for memory stats
+        index_explain = await self.db.command("explain", {"find": "Index", "filter": index_query})
+        cursor = self.db.Index.find(index_query)
+        
+        vrefs = [doc["vref"] for doc in await cursor.to_list(length=None)]
+        
+        if not vrefs:
+            return []
+            
+        # Query Payload collection for the actual data
+        if len(vrefs) == 1:
+            payload_query = {"vref": vrefs[0]}
+        else:
+            payload_query = {"vref": {"$in": vrefs}}
+        
+        cursor = self.db.Payload.find(payload_query)
+        
+        # Return the data from matching payloads
+        results = []
+        async for doc in cursor:
+            results.append(doc)
+        
+        # Log memory usage information
+        final_memory = await self._get_memory_usage()
+        memory_used = final_memory - initial_memory
+        print(f"{self.name} Range Query Memory Usage: {memory_used:.2f} MB")
+        
+        # Log query execution stats
+        self._log_query_stats("Index Range Query", index_explain)
+            
+        return results
+
+    async def range_query_by_attribute(self, attribute_name, attribute_value, vt_from, vt_to, tt_from, tt_to, entity="Student"):
+        """Range query records by a single attribute within VT and TT intervals."""
+        # Track memory usage
+        initial_memory = await self._get_memory_usage()
+        
+        # Query the Index collection to find matching records within time intervals
+        index_query = {
+            attribute_name: attribute_value,
+            "entity": entity,
+            "tt_from": {"$lt": tt_to},
+            "tt_to": {"$gt": tt_from},
+            "vt_from": {"$lt": vt_to},
+            "vt_to": {"$gt": vt_from}
+        }
+        
+        # Get matching vrefs from Index with explain for memory stats
+        index_explain = await self.db.command("explain", {"find": "Index", "filter": index_query})
+        cursor = self.db.Index.find(index_query)
+        
+        vrefs = [doc["vref"] for doc in await cursor.to_list(length=None)]
+        
+        if not vrefs:
+            return []
+            
+        # Query Payload collection for the actual data
+        if len(vrefs) == 1:
+            payload_query = {"vref": vrefs[0]}
+        else:
+            payload_query = {"vref": {"$in": vrefs}}
+        
+        cursor = self.db.Payload.find(payload_query)
+        
+        # Return the data from matching payloads
+        results = []
+        async for doc in cursor:
+            results.append(doc)
+        
+        # Log memory usage information
+        final_memory = await self._get_memory_usage()
+        memory_used = final_memory - initial_memory
+        print(f"{self.name} Range Query Memory Usage: {memory_used:.2f} MB")
+        
+        # Log query execution stats
+        self._log_query_stats(f"{attribute_name} Range Query", index_explain)
+            
+        return results
+
+    async def delta_since_vt_range(self, name, age, vt_from, vt_to, tt, entity="Student"):
+        """Find entities at two VT points (vt_from, tt) and (vt_to, tt).
+        Returns a tuple (entity_at_start, entity_at_end) where each can be None if no entity exists."""
+        from .timer import Timer
+        timer = Timer()
+        timer.start()
+        
+        # Query for entity at (vt_from, tt)
+        entity_at_start = await self._query_at_point(name, age, vt_from, tt, entity)
+        entity_at_end = await self._query_at_point(name, age, vt_to, tt, entity)
+        
+        timer.stop()
+        memory_usage = await self._get_memory_usage()
+        
+        return {
+            "result": (entity_at_start, entity_at_end),
+            "execution_time": timer.get_elapsed_time(),
+            "memory_usage": memory_usage
+        }
+    
+    async def delta_since_tt_range(self, name, age, tt_from, tt_to, vt, entity="Student"):
+        """Find entities at two TT points (vt, tt_from) and (vt, tt_to).
+        Returns a tuple (entity_at_start, entity_at_end) where each can be None if no entity exists.
+        If entities are identical, returns (None, None)."""
+        from .timer import Timer
+        timer = Timer()
+        timer.start()
+        
+        # Query for entity at (vt, tt_from) and (vt, tt_to)
+        entity_at_start = await self._query_at_point(name, age, vt, tt_from, entity)
+        entity_at_end = await self._query_at_point(name, age, vt, tt_to, entity)
+        
+        # If both entities exist and are identical, return (None, None)
+        if entity_at_start and entity_at_end and entity_at_start == entity_at_end:
+            entity_at_start = None
+            entity_at_end = None
+        
+        timer.stop()
+        memory_usage = await self._get_memory_usage()
+        
+        return {
+            "result": (entity_at_start, entity_at_end),
+            "execution_time": timer.get_elapsed_time(),
+            "memory_usage": memory_usage
+        }
+    
+    async def _query_at_point(self, name, age, vt, tt, entity="Student"):
+        """Helper method to query entity at a specific bitemporal point."""
+        try:
+            # Query the Index collection directly with name and age
+            index_query = {
+                "name": name,
+                "age": age,
+                "entity": entity,
+                "tt_from": {"$lte": tt},
+                "tt_to": {"$gt": tt},
+                "vt_from": {"$lte": vt},
+                "vt_to": {"$gt": vt}
+            }
+            
+            cursor = self.db.Index.find(index_query)
+            vrefs = [doc["vref"] for doc in await cursor.to_list(length=None)]
+            
+            if not vrefs:
+                return None
+            
+            # Get the payload for the first matching vref
+            payload = await self.db.Payload.find_one({"vref": vrefs[0]})
+            return payload
+            
+        except Exception:
+            return None
+
     async def _get_memory_usage(self):
         """Get current memory usage from MongoDB server status."""
         try:

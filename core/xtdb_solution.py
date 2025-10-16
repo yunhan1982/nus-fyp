@@ -1,16 +1,13 @@
 import asyncio
 import asyncpg
 import json
-import hashlib
 from datetime import datetime
 from typing import List, Dict, Any, Optional
-from uuid import UUID, uuid4
-
-from core.bitemporal_space import Rectangle
+from .bitemporal_space import Rectangle
 
 class XTDBSolution:
-    def __init__(self, host: str = "localhost", port: int = 5432, 
-                 database: str = "xtdb", user: str = "xtdb", password: str = ""):
+    def __init__(self, host: str = "localhost", port: int = 5433, 
+                 database: str = "xtdb", user: str = "xtdb", password: str = "xtdb"):
         self.name = "XTDB v2 Solution (Postgres Wire Protocol)"
         self.host = host
         self.port = port
@@ -18,10 +15,9 @@ class XTDBSolution:
         self.user = user
         self.password = password
         self.connection = None
-        self.indices = ["name", "age", "attr1", "attr2", "attr3", "attr4"]
         
     async def connect(self):
-        """Establish connection to XTDB via Postgres wire protocol"""
+        """Connect to XTDB v2 via Postgres wire protocol"""
         if not self.connection:
             try:
                 self.connection = await asyncpg.connect(
@@ -31,244 +27,382 @@ class XTDBSolution:
                     user=self.user,
                     password=self.password
                 )
-                print(f"{self.name}: Connected to XTDB v2 at {self.host}:{self.port}")
+                print(f"{self.name}: Connected to XTDB v2 via Postgres wire protocol at {self.host}:{self.port}")
             except Exception as e:
                 print(f"{self.name}: Warning - Could not connect to XTDB: {e}")
     
     async def cleanup(self):
-        """Close database connection"""
+        """Close XTDB connection and cleanup resources"""
         if self.connection:
             await self.connection.close()
             self.connection = None
             print(f"{self.name}: Disconnected from XTDB")
     
+    async def _get_memory_usage(self) -> float:
+        """Get current memory usage in MB (placeholder for XTDB)"""
+        # XTDB doesn't expose memory usage directly like MongoDB
+        return 0.0
+    
+    async def _log_query_stats(self, operation: str, result_count: int, execution_time: float, memory_used: float):
+        """Log query statistics"""
+        print(f"{self.name} - {operation}: {result_count} results, {execution_time:.3f}s, {memory_used:.2f}MB")
+    
     async def initialize_collections(self):
-        """Initialize XTDB connection - tables are created dynamically in XTDB v2"""
+        """Initialize XTDB connection via Postgres wire protocol"""
         await self.connect()
         
-        # In XTDB v2, tables are created dynamically during INSERT operations
-        # We just need to ensure we have a connection
-        print(f"{self.name}: XTDB v2 connection initialized - tables will be created dynamically")
-    
-    def _generate_vref(self, data: Dict[str, Any]) -> str:
-        """Generate version reference from data payload"""
-        payload_str = json.dumps(data.get("payload", {}), sort_keys=True)
-        return str(UUID(bytes=hashlib.md5(payload_str.encode()).digest()))
-    
-    def _generate_eref(self, entity_id: Any) -> str:
-        """Generate entity reference from entity ID"""
-        return str(UUID(bytes=hashlib.md5(str(entity_id).encode()).digest()))
+        # XTDB v2 doesn't require explicit table creation - it's schema-on-write
+        # Just verify connection works
+        try:
+            # Test connection with a simple query
+            await self.connection.fetch("SELECT 1")
+            print(f"{self.name}: XTDB v2 connection initialized via Postgres wire protocol")
+            print(f"{self.name}: Schema-on-write enabled - tables created automatically")
+        except Exception as e:
+            print(f"{self.name}: Warning - Connection test failed: {e}")
     
     async def insert_rectangle_to_collections(self, rectangles: List[Rectangle], entity: str = "Student") -> None:
-        """Insert rectangles into XTDB using SQL with dynamic table creation"""
-        await self.connect()
+        """Insert rectangles into XTDB with bitemporal support (legacy method name)"""
+        if not rectangles:
+            return
+        
+        # Use current time for both transaction and valid time
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        
+        success = await self.insert_data(rectangles, now, now, entity)
+        if not success:
+            print(f"{self.name}: Failed to insert rectangles")
+    
+    async def insert_data(self, rectangles: List[Rectangle], tt: datetime, vt: datetime, entity: str = "Student") -> bool:
+        """Insert rectangle data into XTDB with bitemporal support using RECORDS syntax"""
+        if not self.connection:
+            await self.connect()
         
         try:
-            # In XTDB v2, we insert data directly and tables are created dynamically
-            # Each table requires an _id primary key column
+            start_time = asyncio.get_event_loop().time()
+            memory_before = await self._get_memory_usage()
+            
+            # Use XTDB v2's INSERT RECORDS syntax for bitemporal insertion
             for rect in rectangles:
-                # Prepare the complete record with all temporal and payload data
-                record_id = f"temporal-{rect.index}-{rect.data.get('id', 0)}"
-                
-                # Convert datetime objects to proper format
-                tt_from = rect.tt_from if isinstance(rect.tt_from, datetime) else datetime.fromisoformat(str(rect.tt_from))
-                tt_to = rect.tt_to if isinstance(rect.tt_to, datetime) else datetime.fromisoformat(str(rect.tt_to))
-                vt_from = rect.vt_from if isinstance(rect.vt_from, datetime) else datetime.fromisoformat(str(rect.vt_from))
-                vt_to = rect.vt_to if isinstance(rect.vt_to, datetime) else datetime.fromisoformat(str(rect.vt_to))
-                
-                # Insert into temporal_data table (will be created dynamically)
-                # XTDB v2 uses standard SQL syntax without PostgreSQL-style parameters
+                # Build the RECORDS query with literal values
                 query = f"""
-                INSERT INTO temporal_data 
-                (_id, entity_id, eref, vref, tt_from, tt_to, vt_from, vt_to, payload)
-                VALUES ('{record_id}', '{str(rect.data.get("id", 0))}', '{self._generate_eref(rect.data.get("id", 0))}', 
-                        '{self._generate_vref(rect.data)}', '{tt_from.isoformat()}', '{tt_to.isoformat()}', 
-                        '{vt_from.isoformat()}', '{vt_to.isoformat()}', '{json.dumps(rect.data.get("payload", {})).replace("'", "''")}');
+                    INSERT INTO student RECORDS
+                    {{
+                        _id: '{rect.index}',
+                        entity_id: '{rect.index}',
+                        name: 'Student_{rect.index}',
+                        age: {rect.data.get('age', 25)},
+                        attr1: {rect.data.get('attr1', 0)},
+                        attr2: {rect.data.get('attr2', 0)},
+                        attr3: {rect.data.get('attr3', 0)},
+                        attr4: {rect.index},
+                        _valid_from: '{vt.isoformat()}',
+                        _valid_to: '9999-12-31T23:59:59Z'
+                    }}
                 """
+                
                 await self.connection.execute(query)
             
-            print(f"{self.name}: Inserted {len(rectangles)} rectangles into XTDB v2")
+            execution_time = asyncio.get_event_loop().time() - start_time
+            memory_after = await self._get_memory_usage()
+            await self._log_query_stats("INSERT", len(rectangles), execution_time, memory_after - memory_before)
             
-        except Exception as e:
-            print(f"{self.name}: Exception during insert: {e}")
-    
-    async def query_by_name_and_age(self, name: str, age: int, tt: datetime, vt: datetime, entity: str = "Student") -> List[Dict[str, Any]]:
-        """Query records by name and age at specific valid and transaction times using SQL"""
-        await self.connect()
-        
-        try:
-            # SQL query with time constraints on single table
-            # Escape single quotes in name to prevent SQL injection
-            escaped_name = name.replace("'", "''")
-            query = f"""
-            SELECT payload
-            FROM temporal_data
-            WHERE 
-                payload LIKE '%"name": "{escaped_name}"%' AND
-                payload LIKE '%"age": {age}%' AND
-                tt_from <= '{tt.isoformat()}' AND tt_to > '{tt.isoformat()}' AND
-                vt_from <= '{vt.isoformat()}' AND vt_to > '{vt.isoformat()}'
-            """
-            
-            results = await self.connection.fetch(query)
-            
-            # Convert results to dictionaries
-            return [json.loads(row["payload"]) for row in results]
-            
-        except Exception as e:
-            print(f"{self.name}: Exception during query: {e}")
-            return []
-    
-    async def get_all_entities(self, entity: str = "Student") -> List[str]:
-        """Retrieve all unique entity IDs using SQL"""
-        await self.connect()
-        
-        try:
-            # SQL query to get distinct entity IDs
-            query = "SELECT DISTINCT entity_id FROM temporal_data"
-            
-            results = await self.connection.fetch(query)
-            return [str(row["entity_id"]) for row in results]
-            
-        except Exception as e:
-            print(f"{self.name}: Exception during query: {e}")
-            return []
-    
-    async def get_current_data(self, entity_id: str, tt: datetime, vt: datetime, entity: str = "Student") -> Optional[Dict[str, Any]]:
-        """Retrieve current data for a given entity at specific times using SQL"""
-        await self.connect()
-        
-        try:
-            # SQL query to get current data for entity at specific times
-            query = f"""
-            SELECT payload
-            FROM temporal_data
-            WHERE 
-                entity_id = '{entity_id}' AND
-                tt_from <= '{tt.isoformat()}' AND tt_to > '{tt.isoformat()}' AND
-                vt_from <= '{vt.isoformat()}' AND vt_to > '{vt.isoformat()}'
-            LIMIT 1
-            """
-            
-            result = await self.connection.fetchrow(query)
-            
-            if result:
-                return json.loads(result["payload"])
-            return None
-            
-        except Exception as e:
-            print(f"{self.name}: Exception during query: {e}")
-            return None
-    
-    async def get_all_current_data(self, tt: datetime, vt: datetime, entity: str = "Student") -> List[Dict[str, Any]]:
-        """Retrieve all current data at specific times using SQL"""
-        await self.connect()
-        
-        try:
-            # SQL query to get all current data at specific times
-            query = f"""
-            SELECT payload
-            FROM temporal_data
-            WHERE 
-                tt_from <= '{tt.isoformat()}' AND tt_to > '{tt.isoformat()}' AND
-                vt_from <= '{vt.isoformat()}' AND vt_to > '{vt.isoformat()}'
-            """
-            
-            results = await self.connection.fetch(query)
-            
-            # Convert results to dictionaries
-            return [json.loads(row["payload"]) for row in results]
-            
-        except Exception as e:
-            print(f"{self.name}: Exception during query: {e}")
-            return []
-    
-    async def delete_data(self, entity_id: str, tt: datetime, vt: datetime, entity: str = "Student") -> bool:
-        """Logically delete data by updating temporal bounds using SQL"""
-        await self.connect()
-        
-        try:
-            # Find current temporal records
-            query = f"""
-            SELECT _id
-            FROM temporal_data
-            WHERE 
-                entity_id = '{entity_id}' AND
-                tt_from <= '{tt.isoformat()}' AND tt_to > '{tt.isoformat()}' AND
-                vt_from <= '{vt.isoformat()}' AND vt_to > '{vt.isoformat()}'
-            """
-            
-            record = await self.connection.fetchrow(query)
-            
-            if not record:
-                return False
-            
-            # Update temporal bounds to implement logical deletion
-            update_query = f"""
-            UPDATE temporal_data
-            SET tt_to = '{tt.isoformat()}'
-            WHERE _id = '{record["_id"]}'
-            """
-            
-            await self.connection.execute(update_query)
-            
-            print(f"{self.name}: Logically deleted data for entity {entity_id}")
             return True
             
         except Exception as e:
-            print(f"{self.name}: Exception during delete: {e}")
+            print(f"{self.name}: Error inserting data: {e}")
+            return False
+    
+    async def update_data(self, entity_id: str, updates: Dict[str, Any], tt: datetime, vt: datetime, entity: str = "Student") -> bool:
+        """Update data in XTDB with bitemporal support"""
+        if not self.connection:
+            await self.connect()
+        
+        try:
+            start_time = asyncio.get_event_loop().time()
+            memory_before = await self._get_memory_usage()
+            
+            # Build SET clause
+            set_clauses = []
+            values = []
+            for key, value in updates.items():
+                set_clauses.append(f"{key} = ${len(values) + 1}")
+                values.append(value)
+            
+            # Add entity_id, tt, vt to values
+            values.extend([entity_id, tt, vt])
+            
+            query = f"""
+                UPDATE student 
+                SET {', '.join(set_clauses)}
+                WHERE entity_id = ${len(values) - 2}
+                SETTING SYSTEM_TIME TO ${len(values) - 1},
+                        VALID_TIME TO ${len(values)}
+            """
+            
+            result = await self.connection.execute(query, *values)
+            
+            execution_time = asyncio.get_event_loop().time() - start_time
+            memory_after = await self._get_memory_usage()
+            await self._log_query_stats("UPDATE", 1, execution_time, memory_after - memory_before)
+            
+            return True
+            
+        except Exception as e:
+            print(f"{self.name}: Error updating data: {e}")
+            return False
+    
+    async def get_all_entities(self, tt: datetime, vt: datetime, entity: str = "Student") -> List[str]:
+        """Get all entity IDs at specific transaction and valid times"""
+        if not self.connection:
+            await self.connect()
+        
+        try:
+            start_time = asyncio.get_event_loop().time()
+            memory_before = await self._get_memory_usage()
+            
+            # Query with bitemporal constraints using ISO format strings
+            rows = await self.connection.fetch("""
+                SELECT DISTINCT entity_id 
+                FROM student 
+                FOR SYSTEM_TIME AS OF $1
+                FOR VALID_TIME AS OF $2
+            """, tt.isoformat(), vt.isoformat())
+            
+            entity_ids = [row['entity_id'] for row in rows]
+            
+            execution_time = asyncio.get_event_loop().time() - start_time
+            memory_after = await self._get_memory_usage()
+            await self._log_query_stats("GET_ALL_ENTITIES", len(entity_ids), execution_time, memory_after - memory_before)
+            
+            return entity_ids
+            
+        except Exception as e:
+            print(f"{self.name}: Error getting entities: {e}")
+            return []
+    
+    async def get_current_data(self, entity_id: str, tt: datetime, vt: datetime, entity: str = "Student") -> Dict[str, Any]:
+        """Get current data for a specific entity at given times"""
+        if not self.connection:
+            await self.connect()
+        
+        try:
+            start_time = asyncio.get_event_loop().time()
+            memory_before = await self._get_memory_usage()
+            
+            row = await self.connection.fetchrow("""
+                SELECT * FROM student 
+                WHERE entity_id = $1
+                FOR SYSTEM_TIME AS OF $2
+                FOR VALID_TIME AS OF $3
+                ORDER BY _system_from DESC
+                LIMIT 1
+            """, entity_id, tt, vt)
+            
+            if row:
+                result = dict(row)
+            else:
+                result = {}
+            
+            execution_time = asyncio.get_event_loop().time() - start_time
+            memory_after = await self._get_memory_usage()
+            await self._log_query_stats("GET_CURRENT_DATA", 1 if row else 0, execution_time, memory_after - memory_before)
+            
+            return result
+            
+        except Exception as e:
+            print(f"{self.name}: Error getting current data: {e}")
+            return {}
+    
+    async def get_all_current_data(self, tt: datetime, vt: datetime, entity: str = "Student") -> List[Dict[str, Any]]:
+        """Get all current data at specific times"""
+        if not self.connection:
+            await self.connect()
+        
+        try:
+            start_time = asyncio.get_event_loop().time()
+            memory_before = await self._get_memory_usage()
+            
+            rows = await self.connection.fetch("""
+                SELECT * FROM student 
+                FOR SYSTEM_TIME AS OF $1
+                FOR VALID_TIME AS OF $2
+            """, tt, vt)
+            
+            results = [dict(row) for row in rows]
+            
+            execution_time = asyncio.get_event_loop().time() - start_time
+            memory_after = await self._get_memory_usage()
+            await self._log_query_stats("GET_ALL_CURRENT_DATA", len(results), execution_time, memory_after - memory_before)
+            
+            return results
+            
+        except Exception as e:
+            print(f"{self.name}: Error getting all current data: {e}")
+            return []
+    
+    async def query_by_name_and_age_range(self, name: str, age: int, tt_from: datetime, tt_to: datetime, vt_from: datetime, vt_to: datetime, entity: str = "Student") -> List[Dict[str, Any]]:
+        """Query by name and age with time ranges"""
+        if not self.connection:
+            await self.connect()
+        
+        try:
+            start_time = asyncio.get_event_loop().time()
+            memory_before = await self._get_memory_usage()
+            
+            rows = await self.connection.fetch("""
+                SELECT * FROM student 
+                WHERE name = $1 AND age >= $2
+                FOR SYSTEM_TIME FROM $3 TO $4
+                FOR VALID_TIME FROM $5 TO $6
+            """, name, age, tt_from, tt_to, vt_from, vt_to)
+            
+            results = [dict(row) for row in rows]
+            
+            execution_time = asyncio.get_event_loop().time() - start_time
+            memory_after = await self._get_memory_usage()
+            await self._log_query_stats("QUERY_BY_NAME_AGE_RANGE", len(results), execution_time, memory_after - memory_before)
+            
+            return results
+            
+        except Exception as e:
+            print(f"{self.name}: Error querying by name and age range: {e}")
+            return []
+    
+    async def delta_since_vt_range(self, vt_from: datetime, vt_to: datetime, entity: str = "Student") -> List[Dict[str, Any]]:
+        """Get changes in valid time range"""
+        if not self.connection:
+            await self.connect()
+        
+        try:
+            start_time = asyncio.get_event_loop().time()
+            memory_before = await self._get_memory_usage()
+            
+            rows = await self.connection.fetch("""
+                SELECT * FROM student 
+                FOR ALL VALID_TIME
+                WHERE _valid_from >= $1 AND _valid_from <= $2
+            """, vt_from, vt_to)
+            
+            results = [dict(row) for row in rows]
+            
+            execution_time = asyncio.get_event_loop().time() - start_time
+            memory_after = await self._get_memory_usage()
+            await self._log_query_stats("DELTA_SINCE_VT_RANGE", len(results), execution_time, memory_after - memory_before)
+            
+            return results
+            
+        except Exception as e:
+            print(f"{self.name}: Error getting delta since VT range: {e}")
+            return []
+    
+    async def delta_since_tt_range(self, tt_from: datetime, tt_to: datetime, entity: str = "Student") -> List[Dict[str, Any]]:
+        """Get changes in transaction time range"""
+        if not self.connection:
+            await self.connect()
+        
+        try:
+            start_time = asyncio.get_event_loop().time()
+            memory_before = await self._get_memory_usage()
+            
+            rows = await self.connection.fetch("""
+                SELECT * FROM student 
+                FOR ALL SYSTEM_TIME
+                WHERE _system_from >= $1 AND _system_from <= $2
+            """, tt_from, tt_to)
+            
+            results = [dict(row) for row in rows]
+            
+            execution_time = asyncio.get_event_loop().time() - start_time
+            memory_after = await self._get_memory_usage()
+            await self._log_query_stats("DELTA_SINCE_TT_RANGE", len(results), execution_time, memory_after - memory_before)
+            
+            return results
+            
+        except Exception as e:
+            print(f"{self.name}: Error getting delta since TT range: {e}")
+            return []
+    
+    async def delete_data(self, entity_id: str, tt: datetime, vt: datetime, entity: str = "Student") -> bool:
+        """Delete data with bitemporal support"""
+        if not self.connection:
+            await self.connect()
+        
+        try:
+            start_time = asyncio.get_event_loop().time()
+            memory_before = await self._get_memory_usage()
+            
+            await self.connection.execute("""
+                DELETE FROM student 
+                WHERE entity_id = $1
+                SETTING SYSTEM_TIME TO $2,
+                        VALID_TIME TO $3
+            """, entity_id, tt, vt)
+            
+            execution_time = asyncio.get_event_loop().time() - start_time
+            memory_after = await self._get_memory_usage()
+            await self._log_query_stats("DELETE", 1, execution_time, memory_after - memory_before)
+            
+            return True
+            
+        except Exception as e:
+            print(f"{self.name}: Error deleting data: {e}")
             return False
     
     async def get_data_history(self, entity_id: str, entity: str = "Student") -> List[Dict[str, Any]]:
-        """Retrieve all historical versions of data for a given entity using SQL"""
-        await self.connect()
+        """Get full history of an entity"""
+        if not self.connection:
+            await self.connect()
         
         try:
-            # SQL query to get all historical versions
-            query = f"""
-            SELECT 
-                payload,
-                tt_from,
-                tt_to,
-                vt_from,
-                vt_to
-            FROM temporal_data
-            WHERE entity_id = '{entity_id}'
-            ORDER BY tt_from, vt_from
-            """
+            start_time = asyncio.get_event_loop().time()
+            memory_before = await self._get_memory_usage()
             
-            results = await self.connection.fetch(query)
+            rows = await self.connection.fetch("""
+                SELECT *, _system_from, _system_to, _valid_from, _valid_to
+                FROM student 
+                FOR ALL SYSTEM_TIME
+                FOR ALL VALID_TIME
+                WHERE entity_id = $1
+                ORDER BY _system_from, _valid_from
+            """, entity_id)
             
-            history = []
-            for row in results:
-                # Safely handle datetime conversion
-                tt_from = row["tt_from"].isoformat() if hasattr(row["tt_from"], 'isoformat') else str(row["tt_from"])
-                tt_to = row["tt_to"].isoformat() if hasattr(row["tt_to"], 'isoformat') else str(row["tt_to"])
-                vt_from = row["vt_from"].isoformat() if hasattr(row["vt_from"], 'isoformat') else str(row["vt_from"])
-                vt_to = row["vt_to"].isoformat() if hasattr(row["vt_to"], 'isoformat') else str(row["vt_to"])
-                
-                history.append({
-                    "data": json.loads(row["payload"]),
-                    "tt_from": tt_from,
-                    "tt_to": tt_to,
-                    "vt_from": vt_from,
-                    "vt_to": vt_to
-                })
-                
-            return history
+            results = [dict(row) for row in rows]
+            
+            execution_time = asyncio.get_event_loop().time() - start_time
+            memory_after = await self._get_memory_usage()
+            await self._log_query_stats("GET_DATA_HISTORY", len(results), execution_time, memory_after - memory_before)
+            
+            return results
             
         except Exception as e:
-            print(f"{self.name}: Exception during query: {e}")
+            print(f"{self.name}: Error getting data history: {e}")
             return []
 
-# Usage example:
 async def main():
+    """Test XTDB v2 solution"""
     solution = XTDBSolution()
-    try:
-        await solution.initialize_collections()
-        # Add your test operations here
-    finally:
-        await solution.cleanup()
+    await solution.initialize_collections()
+    
+    # Test basic operations
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    
+    # Create test rectangles
+    rectangles = [
+        Rectangle(1, 10, 20, 30, 40),
+        Rectangle(2, 15, 25, 35, 45)
+    ]
+    
+    # Insert data
+    await solution.insert_data(rectangles, now, now)
+    
+    # Query data
+    entities = await solution.get_all_entities(now, now)
+    print(f"Entities: {entities}")
+    
+    await solution.cleanup()
 
 if __name__ == "__main__":
     asyncio.run(main())

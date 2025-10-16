@@ -13,14 +13,15 @@ from core.solutionE import SolutionE
 
 from core.xtdb_solution import XTDBSolution
 from core.marklogic_solution import MarkLogicSolution
+from core.xtdb_native_solution import XTDBNativeSolution
 
 # Generate rectangles
 def generate_rectangles_data(
     batch_size=20, 
-    total_ids=200,
+    total_ids=100,  # Reduced for testing
     start_time=datetime(2018, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
     end_time=datetime(2025, 3, 1, 0, 0, 0, tzinfo=timezone.utc),
-    num_points_per_id=500
+    num_points_per_id=50  # Reduced for testing
 ):
 
     """
@@ -69,16 +70,17 @@ async def main():
 
 
     solutions = [
-        SolutionA1(),
-        SolutionA2(),
-        SolutionA3(), 
-        SolutionB1(),
-        SolutionB2(),
-        SolutionC(),
-        SolutionD(),
-        SolutionE(),
+        # SolutionA1(),
+        # SolutionA2(),
+        # SolutionA3(), 
+        # SolutionB1(),
+        # SolutionB2(),
+        # SolutionC(),
+        # SolutionD(),
+        # SolutionE(),
         # MarkLogicSolution(),
-        # XTDBSolution()
+        XTDBSolution(),  # Updated XTDB solution with Postgres wire protocol
+        XTDBNativeSolution()  # Native XTDB solution with JDBC transaction log
     ]
     await asyncio.gather(
         *[solution.initialize_collections() for solution in solutions]

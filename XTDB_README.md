@@ -231,7 +231,7 @@ solutions = [
 1. **Connection Failed**
 
    ```
-   Error: Cannot connect to XTDB v2 at localhost:5432
+   Error: Cannot connect to XTDB v2 at localhost:5433
    ```
 
    - Ensure XTDB v2 is running: `docker-compose up xtdb-v2`

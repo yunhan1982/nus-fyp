@@ -5,7 +5,7 @@ services:
     image: ghcr.io/xtdb/xtdb:latest
     container_name: xtdb-v2
     ports:
-      - "5432:5432" # Postgres wire protocol (primary API)
+      - "5433:5432" # Postgres wire protocol (primary API)
     #   - "8080:8080"  # Monitoring/healthz HTTP endpoints
     # restart: unless-stopped
     # healthcheck:
