@@ -4,7 +4,7 @@ import random
 import uuid
 
 from core.bitemporal_space import BitemporalSpace, UpdateAction
-from .plot_bitemporal_space import plot_bitemporal_space
+# Removed plotting import to avoid dependency during mock data generation
 
 
 # Helper function to capture transformations

@@ -193,12 +193,12 @@ class XTDBSolution:
             
             row = await self.connection.fetchrow("""
                 SELECT * FROM student 
-                WHERE entity_id = $1
                 FOR SYSTEM_TIME AS OF $2
                 FOR VALID_TIME AS OF $3
+                WHERE entity_id = $1
                 ORDER BY _system_from DESC
                 LIMIT 1
-            """, entity_id, tt, vt)
+            """, entity_id, tt.isoformat(), vt.isoformat())
             
             if row:
                 result = dict(row)

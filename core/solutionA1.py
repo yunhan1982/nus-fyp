@@ -199,34 +199,43 @@ class SolutionA1:
             if not age_index_entries:
                 return []
             
-            # Step 6: Get matching vrefs (ensure they're Binary objects)
-            matching_vrefs = {entry["vref"] for entry in age_index_entries}
-            timer.stage("vref Extraction")
+            # Step 6: Get matching erefs from age query
+            matching_erefs = {entry["eref"] for entry in age_index_entries}
+            timer.stage("eref Extraction")
             
-            # Step 7: Final payload query with explain for memory stats
-            if matching_vrefs:
-                # Convert to list to handle Binary objects properly
-                vref_list = list(matching_vrefs)
-                # if len(vref_list) == 1:
-                #     payload_query = {"vref": vref_list[0]}
-                # else:
-                payload_query = {"vref": {"$in": vref_list}}
+            # Step 7: Query timeslices to get the correct vref for the specific tt and vt point
+            if matching_erefs:
+                timeslice_query = {
+                    "eref": {"$in": list(matching_erefs)},
+                    "tt_from": {"$lte": tt},
+                    "tt_to": {"$gt": tt},
+                    "vt_from": {"$lte": vt},
+                    "vt_to": {"$gt": vt}
+                }
                 
-                # payload_explain = await self.db.command("explain", {"find": "Payloads", "filter": payload_query})
-                payloads = await self.db.Payloads.find(payload_query).to_list(None)
-                timer.stage("Payload Query")
+                timeslices = await self.db.Timeslices.find(timeslice_query).to_list(None)
+                timer.stage("Timeslice Query")
                 
-                # Log memory usage information
-                final_memory = await self._get_memory_usage()
-                memory_used = final_memory - initial_memory
-                print(f"{self.name} Memory Usage: {memory_used:.2f} MB")
-                
-                # Log query execution stats if available
-                self._log_query_stats("Name Query", name_explain)
-                self._log_query_stats("Age Query", age_explain)
-                # self._log_query_stats("Payload Query", payload_explain)
-                
-                return payloads
+                if timeslices:
+                    # Get the vref from the first matching timeslice (should be unique for point query)
+                    vref = timeslices[0]["vref"]
+                    
+                    # Step 8: Final payload query
+                    payload = await self.db.Payloads.find_one({"vref": vref})
+                    timer.stage("Payload Query")
+                    
+                    # Log memory usage information
+                    final_memory = await self._get_memory_usage()
+                    memory_used = final_memory - initial_memory
+                    print(f"{self.name} Memory Usage: {memory_used:.2f} MB")
+                    
+                    # Log query execution stats if available
+                    self._log_query_stats("Name Query", name_explain)
+                    self._log_query_stats("Age Query", age_explain)
+                    
+                    return [payload] if payload else []
+                else:
+                    return []
             
             return []
         finally:
@@ -390,10 +399,10 @@ class SolutionA1:
         finally:
             timer.stop()
 
-    async def delta_since_vt_range(self, name, age, vt_from, vt_to, tt, entity="Student"):
+    async def delta_since_vt_range(self, attribute_name, attribute_value, vt_from, vt_to, tt, entity="Student"):
         """Find entities at two VT points (vt_from, tt) and (vt_to, tt).
         Returns a tuple (entity_at_start, entity_at_end) where each can be None if no entity exists."""
-        timer = Timer()
+        timer = Timer("MongoDB Delta VT Range Query")
         timer.start()
         
         # Query for entity at (vt_from, tt)
@@ -401,13 +410,12 @@ class SolutionA1:
         entity_at_end = None
         
         # Find entity at first point (vt_from, tt)
-        name_hash = hashlib.md5(str({"name": name}).encode('utf-8')).hexdigest()
-        age_hash = hashlib.md5(str({"age": age}).encode('utf-8')).hexdigest()
+        attribute_hash = hashlib.md5(str({attribute_name: attribute_value}).encode('utf-8')).hexdigest()
         
         pipeline_start = [
             {
                 "$match": {
-                    "hash": {"$in": [name_hash, age_hash]},
+                    "hash": attribute_hash,
                     "vt_from": {"$lte": vt_from},
                     "vt_to": {"$gt": vt_from},
                     "tt_from": {"$lte": tt},
@@ -433,8 +441,7 @@ class SolutionA1:
             },
             {
                 "$match": {
-                    "payload.name": name,
-                    "payload.age": age
+                    f"payload.{attribute_name}": attribute_value
                 }
             }
         ]
@@ -447,7 +454,7 @@ class SolutionA1:
         pipeline_end = [
             {
                 "$match": {
-                    "hash": {"$in": [name_hash, age_hash]},
+                    "hash": attribute_hash,
                     "vt_from": {"$lte": vt_to},
                     "vt_to": {"$gt": vt_to},
                     "tt_from": {"$lte": tt},
@@ -473,8 +480,7 @@ class SolutionA1:
             },
             {
                 "$match": {
-                    "payload.name": name,
-                    "payload.age": age
+                    f"payload.{attribute_name}": attribute_value
                 }
             }
         ]
@@ -485,18 +491,15 @@ class SolutionA1:
         
         timer.stop()
         memory_usage = await self._get_memory_usage()
+        print(f"{self.name} Delta VT Range Query - Memory: {memory_usage:.2f} MB")
         
-        return {
-            "result": (entity_at_start, entity_at_end),
-            "execution_time": timer.get_elapsed_time(),
-            "memory_usage": memory_usage
-        }
+        return (entity_at_start, entity_at_end)
     
-    async def delta_since_tt_range(self, name, age, tt_from, tt_to, vt, entity="Student"):
+    async def delta_since_tt_range(self, attribute_name, attribute_value, tt_from, tt_to, vt, entity="Student"):
         """Find entities at two TT points (vt, tt_from) and (vt, tt_to).
         Returns a tuple (entity_at_start, entity_at_end) where each can be None if no entity exists.
         If entities are identical, returns (None, None)."""
-        timer = Timer()
+        timer = Timer("MongoDB Delta TT Range Query")
         timer.start()
         
         # Query for entity at (vt, tt_from)
@@ -504,13 +507,12 @@ class SolutionA1:
         entity_at_end = None
         
         # Find entity at first point (vt, tt_from)
-        name_hash = hashlib.md5(str({"name": name}).encode('utf-8')).hexdigest()
-        age_hash = hashlib.md5(str({"age": age}).encode('utf-8')).hexdigest()
+        attribute_hash = hashlib.md5(str({attribute_name: attribute_value}).encode('utf-8')).hexdigest()
         
         pipeline_start = [
             {
                 "$match": {
-                    "hash": {"$in": [name_hash, age_hash]},
+                    "hash": attribute_hash,
                     "vt_from": {"$lte": vt},
                     "vt_to": {"$gt": vt},
                     "tt_from": {"$lte": tt_from},
@@ -536,8 +538,7 @@ class SolutionA1:
             },
             {
                 "$match": {
-                    "payload.name": name,
-                    "payload.age": age
+                    f"payload.{attribute_name}": attribute_value
                 }
             }
         ]
@@ -550,7 +551,7 @@ class SolutionA1:
         pipeline_end = [
             {
                 "$match": {
-                    "hash": {"$in": [name_hash, age_hash]},
+                    "hash": attribute_hash,
                     "vt_from": {"$lte": vt},
                     "vt_to": {"$gt": vt},
                     "tt_from": {"$lte": tt_to},
@@ -576,8 +577,7 @@ class SolutionA1:
             },
             {
                 "$match": {
-                    "payload.name": name,
-                    "payload.age": age
+                    f"payload.{attribute_name}": attribute_value
                 }
             }
         ]
@@ -593,12 +593,9 @@ class SolutionA1:
         
         timer.stop()
         memory_usage = await self._get_memory_usage()
+        print(f"{self.name} Delta TT Range Query - Memory: {memory_usage:.2f} MB")
         
-        return {
-            "result": (entity_at_start, entity_at_end),
-            "execution_time": timer.get_elapsed_time(),
-            "memory_usage": memory_usage
-        }
+        return (entity_at_start, entity_at_end)
 
     async def _get_memory_usage(self):
         """Get current memory usage from MongoDB server status."""

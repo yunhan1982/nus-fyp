@@ -1,19 +1,90 @@
 version: "3.8"
 
 services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.3.2
+    container_name: zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  kafka:
+    image: confluentinc/cp-kafka:7.3.2
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: "zookeeper:2181"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  mongodb:
+    image: mongo:7.0
+    container_name: mongodb-limited
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    command: ["mongod", "--wiredTigerCacheSizeGB", "8", "--bind_ip_all"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
   xtdb:
     image: ghcr.io/xtdb/xtdb:latest
     container_name: xtdb-v2
+    depends_on:
+      - kafka
     ports:
+      - "3000:3000" # HTTP server
       - "5433:5432" # Postgres wire protocol (primary API)
-    #   - "8080:8080"  # Monitoring/healthz HTTP endpoints
-    # restart: unless-stopped
-    # healthcheck:
-    #   test: ["CMD", "curl", "-f", "http://localhost:8080/healthz/alive"]
-    #   interval: 30s
-    #   timeout: 10s
-    #   retries: 3
-    #   start_period: 10s
+    environment:
+      XTDB_NODE_ID: "node1"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      XTDB_LOG_TOPIC: "xtdb-tx-log"
+      XTDB_HOME: "/var/lib/xtdb"
+      XTDB_DB_PORT: 5432
+      # Configure XTDB to use Kafka for transaction log
+      XTDB_TX_LOG_KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      XTDB_TX_LOG_KAFKA_TOPIC: "xtdb-tx-log"
+    volumes:
+      - xtdb_data:/var/lib/xtdb
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   marklogic:
     image: progressofficial/marklogic-db:latest
@@ -42,4 +113,8 @@ volumes:
   data:
     driver: local
   marklogic_data:
+    driver: local
+  mongodb_data:
+    driver: local
+  xtdb_data:
     driver: local

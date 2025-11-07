@@ -153,29 +153,41 @@ class SolutionE:
         name = str(name)
         age = str(age)
         
-        # SQL equivalent of SolutionC's MongoDB aggregation pipeline
+        # SQL equivalent of SolutionC's MongoDB aggregation pipeline with proper deduplication
         query = """
+        WITH joined_data AS (
+            SELECT
+                n.eref AS id,
+                n.value AS name,
+                a.value AS age,
+                GREATEST(n.tt_from, a.tt_from) AS tt_from,
+                LEAST(n.tt_to, a.tt_to) AS tt_to,
+                GREATEST(n.vt_from, a.vt_from) AS vt_from,
+                LEAST(n.vt_to, a.vt_to) AS vt_to
+            FROM Name n
+            JOIN Age a ON n.eref = a.eref AND n.entity = a.entity
+            WHERE n.value = ? 
+            AND a.value = ? 
+            AND n.entity = ?
+            AND n.tt_from <= ? AND n.tt_to > ?
+            AND n.vt_from <= ? AND n.vt_to > ?
+            AND a.tt_from <= ? AND a.tt_to > ?
+            AND a.vt_from <= ? AND a.vt_to > ?
+            AND n.tt_from < LEAST(n.tt_to, a.tt_to)
+            AND n.vt_from < LEAST(n.vt_to, a.vt_to)
+            AND a.tt_from < LEAST(n.tt_to, a.tt_to)
+            AND a.vt_from < LEAST(n.vt_to, a.vt_to)
+        )
         SELECT 
-            n.eref AS id,
-            n.value AS name,
-            a.value AS age,
-            GREATEST(n.tt_from, a.tt_from) AS tt_from,
-            LEAST(n.tt_to, a.tt_to) AS tt_to,
-            GREATEST(n.vt_from, a.vt_from) AS vt_from,
-            LEAST(n.vt_to, a.vt_to) AS vt_to
-        FROM Name n
-        JOIN Age a ON n.eref = a.eref AND n.entity = a.entity
-        WHERE n.value = ? 
-        AND a.value = ? 
-        AND n.entity = ?
-        AND n.tt_from <= ? AND n.tt_to > ?
-        AND n.vt_from <= ? AND n.vt_to > ?
-        AND a.tt_from <= ? AND a.tt_to > ?
-        AND a.vt_from <= ? AND a.vt_to > ?
-        AND n.tt_from < LEAST(n.tt_to, a.tt_to)
-        AND n.vt_from < LEAST(n.vt_to, a.vt_to)
-        AND a.tt_from < LEAST(n.tt_to, a.tt_to)
-        AND a.vt_from < LEAST(n.vt_to, a.vt_to)
+            id,
+            name,
+            age,
+            tt_from,
+            tt_to,
+            vt_from,
+            vt_to
+        FROM joined_data
+        GROUP BY id, name, age, tt_from, tt_to, vt_from, vt_to
         """
         
         # Get query plan for analysis
@@ -350,37 +362,35 @@ class SolutionE:
             for row in results
         ]
 
-    async def delta_since_vt_range(self, name, age, vt_from, vt_to, tt, entity="Student"):
+    async def delta_since_vt_range(self, attribute_name, attribute_value, vt_from, vt_to, tt, entity="Student"):
         """Find entities at two VT points (vt_from, tt) and (vt_to, tt).
         Returns a tuple (entity_at_start, entity_at_end) where each can be None if no entity exists."""
-        from .timer import Timer
-        timer = Timer()
+        from .utils.timing import Timer
+        timer = Timer("Delta Since VT Range Query Performance")
         timer.start()
         
         # Query for entity at (vt_from, tt)
-        entity_at_start = await self._query_at_point(name, age, vt_from, tt, entity)
-        entity_at_end = await self._query_at_point(name, age, vt_to, tt, entity)
+        entity_at_start = await self._query_at_point(attribute_name, attribute_value, vt_from, tt, entity)
+        entity_at_end = await self._query_at_point(attribute_name, attribute_value, vt_to, tt, entity)
         
         timer.stop()
         memory_usage = self._get_memory_usage()
         
-        return {
-            "result": (entity_at_start, entity_at_end),
-            "execution_time": timer.get_elapsed_time(),
-            "memory_usage": memory_usage
-        }
+        print(f"Delta Since VT Range Query - Memory usage: {memory_usage:.2f}MB")
+        
+        return (entity_at_start, entity_at_end)
     
-    async def delta_since_tt_range(self, name, age, tt_from, tt_to, vt, entity="Student"):
+    async def delta_since_tt_range(self, attribute_name, attribute_value, tt_from, tt_to, vt, entity="Student"):
         """Find entities at two TT points (vt, tt_from) and (vt, tt_to).
         Returns a tuple (entity_at_start, entity_at_end) where each can be None if no entity exists.
         If entities are identical, returns (None, None)."""
-        from .timer import Timer
-        timer = Timer()
+        from .utils.timing import Timer
+        timer = Timer("Delta Since TT Range Query Performance")
         timer.start()
         
         # Query for entity at (vt, tt_from) and (vt, tt_to)
-        entity_at_start = await self._query_at_point(name, age, vt, tt_from, entity)
-        entity_at_end = await self._query_at_point(name, age, vt, tt_to, entity)
+        entity_at_start = await self._query_at_point(attribute_name, attribute_value, vt, tt_from, entity)
+        entity_at_end = await self._query_at_point(attribute_name, attribute_value, vt, tt_to, entity)
         
         # If both entities exist and are identical, return (None, None)
         if entity_at_start and entity_at_end and entity_at_start == entity_at_end:
@@ -390,22 +400,22 @@ class SolutionE:
         timer.stop()
         memory_usage = self._get_memory_usage()
         
-        return {
-            "result": (entity_at_start, entity_at_end),
-            "execution_time": timer.get_elapsed_time(),
-            "memory_usage": memory_usage
-        }
+        print(f"Delta Since TT Range Query - Memory usage: {memory_usage:.2f}MB")
+        
+        return (entity_at_start, entity_at_end)
     
-    async def _query_at_point(self, name, age, vt, tt, entity="Student"):
+    async def _query_at_point(self, attribute_name, attribute_value, vt, tt, entity="Student"):
         """Helper method to query entity at a specific bitemporal point."""
         if not self.connection:
             await self.connect()
         
         try:
-            # First, find entities that match the name constraint
-            name_query = """
+            # Find entities that match the attribute constraint
+            # Use dynamic table name based on attribute (capitalize first letter)
+            table_name = attribute_name.capitalize()
+            attribute_query = f"""
             SELECT eref
-            FROM Name
+            FROM {table_name}
             WHERE value = ?
             AND entity = ?
             AND tt_from <= ?
@@ -414,40 +424,21 @@ class SolutionE:
             AND vt_to > ?
             """
             
-            name_results = self.connection.execute(name_query, (
-                name, entity, tt, tt, vt, vt
+            attribute_results = self.connection.execute(attribute_query, (
+                attribute_value, entity, tt, tt, vt, vt
             )).fetchall()
             
-            if not name_results:
+            if not attribute_results:
                 return None
             
-            # Check each matching entity for age constraint
-            for name_result in name_results:
-                entity_id = name_result[0]
-                
-                # Check if this entity also has the required age
-                age_query = """
-                SELECT 1
-                FROM Age
-                WHERE eref = ?
-                AND entity = ?
-                AND value = ?
-                AND tt_from <= ?
-                AND tt_to > ?
-                AND vt_from <= ?
-                AND vt_to > ?
-                """
-                
-                age_result = self.connection.execute(age_query, (
-                    entity_id, entity, age, tt, tt, vt, vt
-                )).fetchone()
-                
-                if age_result:
-                    # Get the full current data for this entity
-                    data = await self.get_current_data(entity_id, tt, vt, entity)
-                    if data:
-                        data["id"] = entity_id
-                        return data
+            # Get the first matching entity
+            entity_id = attribute_results[0][0]
+            
+            # Get the full current data for this entity
+            data = await self.get_current_data(entity_id, tt, vt, entity)
+            if data:
+                data["id"] = entity_id
+                return data
             
             return None
             

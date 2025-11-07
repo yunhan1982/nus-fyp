@@ -338,37 +338,35 @@ class SolutionD:
         # Parse JSON data from results
         return [json.loads(row[0]) for row in results]
 
-    async def delta_since_vt_range(self, name, age, vt_from, vt_to, tt, entity="Student"):
+    async def delta_since_vt_range(self, attribute_name, attribute_value, vt_from, vt_to, tt, entity="Student"):
         """Find entities at two VT points (vt_from, tt) and (vt_to, tt).
         Returns a tuple (entity_at_start, entity_at_end) where each can be None if no entity exists."""
-        from .timer import Timer
-        timer = Timer()
+        from .utils.timing import Timer
+        timer = Timer("Delta Since VT Range Query Performance")
         timer.start()
         
         # Query for entity at (vt_from, tt)
-        entity_at_start = await self._query_at_point(name, age, vt_from, tt, entity)
-        entity_at_end = await self._query_at_point(name, age, vt_to, tt, entity)
+        entity_at_start = await self._query_at_point(attribute_name, attribute_value, vt_from, tt, entity)
+        entity_at_end = await self._query_at_point(attribute_name, attribute_value, vt_to, tt, entity)
         
         timer.stop()
         memory_usage = self._get_memory_usage()
         
-        return {
-            "result": (entity_at_start, entity_at_end),
-            "execution_time": timer.get_elapsed_time(),
-            "memory_usage": memory_usage
-        }
+        print(f"Delta Since VT Range Query - Memory usage: {memory_usage:.2f}MB")
+        
+        return (entity_at_start, entity_at_end)
     
-    async def delta_since_tt_range(self, name, age, tt_from, tt_to, vt, entity="Student"):
+    async def delta_since_tt_range(self, attribute_name, attribute_value, tt_from, tt_to, vt, entity="Student"):
         """Find entities at two TT points (vt, tt_from) and (vt, tt_to).
         Returns a tuple (entity_at_start, entity_at_end) where each can be None if no entity exists.
         If entities are identical, returns (None, None)."""
-        from .timer import Timer
-        timer = Timer()
+        from .utils.timing import Timer
+        timer = Timer("Delta Since TT Range Query Performance")
         timer.start()
         
         # Query for entity at (vt, tt_from) and (vt, tt_to)
-        entity_at_start = await self._query_at_point(name, age, vt, tt_from, entity)
-        entity_at_end = await self._query_at_point(name, age, vt, tt_to, entity)
+        entity_at_start = await self._query_at_point(attribute_name, attribute_value, vt, tt_from, entity)
+        entity_at_end = await self._query_at_point(attribute_name, attribute_value, vt, tt_to, entity)
         
         # If both entities exist and are identical, return (None, None)
         if entity_at_start and entity_at_end and entity_at_start == entity_at_end:
@@ -378,25 +376,23 @@ class SolutionD:
         timer.stop()
         memory_usage = self._get_memory_usage()
         
-        return {
-            "result": (entity_at_start, entity_at_end),
-            "execution_time": timer.get_elapsed_time(),
-            "memory_usage": memory_usage
-        }
+        print(f"Delta Since TT Range Query - Memory usage: {memory_usage:.2f}MB")
+        
+        return (entity_at_start, entity_at_end)
     
-    async def _query_at_point(self, name, age, vt, tt, entity="Student"):
+    async def _query_at_point(self, attribute_name, attribute_value, vt, tt, entity="Student"):
         """Helper method to query entity at a specific bitemporal point using SQL."""
         if not self.connection:
             await self.connect()
         
         try:
-            query = """
+            # Build dynamic query based on attribute name
+            query = f"""
             WITH matched_indices AS (
                 SELECT i_ts.vref
                 FROM Index_ts i_ts
                 JOIN Index_data i_data ON i_ts.vref = i_data.vref
-                WHERE i_data.name = ?
-                AND i_data.age = ?
+                WHERE i_data.{attribute_name} = ?
                 AND i_ts.entity = ?
                 AND i_ts.tt_from <= ?
                 AND i_ts.tt_to > ?
@@ -410,8 +406,7 @@ class SolutionD:
             """
             
             results = self.connection.execute(query, (
-                name,
-                age,
+                attribute_value,
                 entity,
                 tt,
                 tt,

@@ -30,6 +30,23 @@ class Timer:
         for stage_name, duration in self.stages:
             print(f"{stage_name}: {duration:.3f} ms")
         print(f"Total time: {total_ms:.3f} ms\n")
+        return total_ms
+    
+    def __enter__(self):
+        self.start()
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.stop()
+        return False
+    
+    @property
+    def elapsed(self):
+        """Get elapsed time in milliseconds without stopping the timer"""
+        if self.start_ns is None:
+            return 0
+        current_ns = time.perf_counter_ns()
+        return (current_ns - self.start_ns) / 1_000_000
 
 @asynccontextmanager
 async def timer(name: str):
@@ -37,4 +54,4 @@ async def timer(name: str):
     try:
         yield t
     finally:
-        t.stop() 
+        t.stop()

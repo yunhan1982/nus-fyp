@@ -159,6 +159,31 @@ class SolutionC:
                         ]
                     }
                 }
+            },
+            # Group by id to remove duplicates and keep the first occurrence
+            {
+                "$group": {
+                    "_id": "$id",
+                    "name": {"$first": "$name"},
+                    "age": {"$first": "$age"},
+                    "tt_from": {"$first": "$tt_from"},
+                    "tt_to": {"$first": "$tt_to"},
+                    "vt_from": {"$first": "$vt_from"},
+                    "vt_to": {"$first": "$vt_to"}
+                }
+            },
+            # Project to match expected output format
+            {
+                "$project": {
+                    "_id": 0,
+                    "id": "$_id",
+                    "name": 1,
+                    "age": 1,
+                    "tt_from": 1,
+                    "tt_to": 1,
+                    "vt_from": 1,
+                    "vt_to": 1
+                }
             }
         ]
         
@@ -330,37 +355,33 @@ class SolutionC:
         
         return results
 
-    async def delta_since_vt_range(self, name, age, vt_from, vt_to, tt, entity="Student"):
+    async def delta_since_vt_range(self, attribute_name, attribute_value, vt_from, vt_to, tt, entity="Student"):
         """Find entities at two VT points (vt_from, tt) and (vt_to, tt).
         Returns a tuple (entity_at_start, entity_at_end) where each can be None if no entity exists."""
-        from .timer import Timer
-        timer = Timer()
+        timer = Timer("Delta Since VT Range Query Performance")
         timer.start()
         
         # Query for entity at (vt_from, tt)
-        entity_at_start = await self._query_at_point(name, age, vt_from, tt, entity)
-        entity_at_end = await self._query_at_point(name, age, vt_to, tt, entity)
+        entity_at_start = await self._query_at_point(attribute_name, attribute_value, vt_from, tt, entity)
+        entity_at_end = await self._query_at_point(attribute_name, attribute_value, vt_to, tt, entity)
         
         timer.stop()
         memory_usage = await self._get_memory_usage()
         
-        return {
-            "result": (entity_at_start, entity_at_end),
-            "execution_time": timer.get_elapsed_time(),
-            "memory_usage": memory_usage
-        }
+        print(f"Delta Since VT Range Query - Memory usage: {memory_usage:.2f}MB")
+        
+        return (entity_at_start, entity_at_end)
     
-    async def delta_since_tt_range(self, name, age, tt_from, tt_to, vt, entity="Student"):
+    async def delta_since_tt_range(self, attribute_name, attribute_value, tt_from, tt_to, vt, entity="Student"):
         """Find entities at two TT points (vt, tt_from) and (vt, tt_to).
         Returns a tuple (entity_at_start, entity_at_end) where each can be None if no entity exists.
         If entities are identical, returns (None, None)."""
-        from .timer import Timer
-        timer = Timer()
+        timer = Timer("Delta Since TT Range Query Performance")
         timer.start()
         
         # Query for entity at (vt, tt_from) and (vt, tt_to)
-        entity_at_start = await self._query_at_point(name, age, vt, tt_from, entity)
-        entity_at_end = await self._query_at_point(name, age, vt, tt_to, entity)
+        entity_at_start = await self._query_at_point(attribute_name, attribute_value, vt, tt_from, entity)
+        entity_at_end = await self._query_at_point(attribute_name, attribute_value, vt, tt_to, entity)
         
         # If both entities exist and are identical, return (None, None)
         if entity_at_start and entity_at_end and entity_at_start == entity_at_end:
@@ -370,20 +391,21 @@ class SolutionC:
         timer.stop()
         memory_usage = await self._get_memory_usage()
         
-        return {
-            "result": (entity_at_start, entity_at_end),
-            "execution_time": timer.get_elapsed_time(),
-            "memory_usage": memory_usage
-        }
+        print(f"Delta Since TT Range Query - Memory usage: {memory_usage:.2f}MB")
+        
+        return (entity_at_start, entity_at_end)
     
-    async def _query_at_point(self, name, age, vt, tt, entity="Student"):
+    async def _query_at_point(self, attribute_name, attribute_value, vt, tt, entity="Student"):
         """Helper method to query entity at a specific bitemporal point using aggregation."""
         try:
+            # Use the attribute name to determine the collection (capitalize first letter)
+            collection_name = attribute_name.capitalize()
+            
             pipeline = [
-                # Match documents from Name collection
+                # Match documents from the attribute collection
                 {
                     "$match": {
-                        "value": name,
+                        "value": attribute_value,
                         "entity": entity,
                         "tt_from": {"$lte": tt},
                         "tt_to": {"$gt": tt},
@@ -391,74 +413,16 @@ class SolutionC:
                         "vt_to": {"$gt": vt}
                     }
                 },
-                # Lookup matching documents from Age collection
-                {
-                    "$lookup": {
-                        "from": "Age",
-                        "let": {
-                            "eref": "$eref",
-                            "entity": "$entity"
-                        },
-                        "pipeline": [
-                            {
-                                "$match": {
-                                    "$expr": {
-                                        "$and": [
-                                            {"$eq": ["$eref", "$$eref"]},
-                                            {"$eq": ["$entity", "$$entity"]},
-                                            {"$eq": ["$value", age]},
-                                            {"$lte": ["$tt_from", tt]},
-                                            {"$gt": ["$tt_to", tt]},
-                                            {"$lte": ["$vt_from", vt]},
-                                            {"$gt": ["$vt_to", vt]}
-                                        ]
-                                    }
-                                }
-                            }
-                        ],
-                        "as": "age_matches"
-                    }
-                },
-                # Filter out documents with no age matches
-                {
-                    "$match": {
-                        "age_matches": {"$ne": []}
-                    }
-                },
-                # Unwind the age matches array
-                {
-                    "$unwind": "$age_matches"
-                },
                 # Project the final result format
                 {
                     "$project": {
                         "_id": 0,
                         "id": "$eref",
-                        "name": "$value",
-                        "age": "$age_matches.value",
-                        "tt_from": {
-                            "$max": ["$tt_from", "$age_matches.tt_from"]
-                        },
-                        "tt_to": {
-                            "$min": ["$tt_to", "$age_matches.tt_to"]
-                        },
-                        "vt_from": {
-                            "$max": ["$vt_from", "$age_matches.vt_from"]
-                        },
-                        "vt_to": {
-                            "$min": ["$vt_to", "$age_matches.vt_to"]
-                        }
-                    }
-                },
-                # Filter out invalid time periods
-                {
-                    "$match": {
-                        "$expr": {
-                            "$and": [
-                                {"$lt": ["$tt_from", "$tt_to"]},
-                                {"$lt": ["$vt_from", "$vt_to"]}
-                            ]
-                        }
+                        attribute_name: "$value",
+                        "tt_from": "$tt_from",
+                        "tt_to": "$tt_to",
+                        "vt_from": "$vt_from",
+                        "vt_to": "$vt_to"
                     }
                 },
                 # Limit to first result
@@ -467,7 +431,7 @@ class SolutionC:
                 }
             ]
             
-            results = await self.db["Name"].aggregate(pipeline).to_list(None)
+            results = await self.db[collection_name].aggregate(pipeline).to_list(None)
             return results[0] if results else None
             
         except Exception:
